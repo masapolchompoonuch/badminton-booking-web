@@ -290,10 +290,10 @@ export default function Home() {
       setSuccessMessage(`Booking success! Your booking code is ${bookingCode}`)
       setLatestBookingCode(bookingCode)
 
-      // window.scrollTo({
-      //   top: 0,
-      //   behavior: 'smooth',
-      // })
+      window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+      })
 
       setFullName('')
       setPhone('')
@@ -431,7 +431,35 @@ useEffect(() => {
             </p>
           </div>
 
-          
+          {successMessage && (
+            <div className="mt-8 mb-8 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5 text-emerald-300">
+              <p className="font-semibold">{successMessage}</p>
+
+              <div className="mt-5 rounded-2xl border border-white/10 bg-neutral-950 p-4">
+                <p className="mb-3 font-semibold text-white">
+                  Upload payment slip
+                </p>
+
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setSlipFile(file)
+                  }}
+                  className="mb-4 w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-white"
+                />
+
+                <button
+                  onClick={uploadPaymentSlip}
+                  disabled={uploadingSlip}
+                  className="rounded-xl bg-white px-5 py-3 font-bold text-black"
+                >
+                  {uploadingSlip ? 'Uploading...' : 'Upload Slip'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <section className="space-y-6">
@@ -763,35 +791,7 @@ useEffect(() => {
                     </button>
                   </div>
                 )}
-                {successMessage && (
-                  <div className="mt-8 mb-8 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5 text-emerald-300">
-                    <p className="font-semibold">{successMessage}</p>
-
-                    <div className="mt-5 rounded-2xl border border-white/10 bg-neutral-950 p-4">
-                      <p className="mb-3 font-semibold text-white">
-                        Upload payment slip
-                      </p>
-
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) setSlipFile(file)
-                        }}
-                        className="mb-4 w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-white"
-                      />
-
-                      <button
-                        onClick={uploadPaymentSlip}
-                        disabled={uploadingSlip}
-                        className="rounded-xl bg-white px-5 py-3 font-bold text-black"
-                      >
-                        {uploadingSlip ? 'Uploading...' : 'Upload Slip'}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                
               </div>
             </aside>
           </div>
