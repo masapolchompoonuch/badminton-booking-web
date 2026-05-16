@@ -290,10 +290,12 @@ export default function Home() {
       setSuccessMessage(`Booking success! Your booking code is ${bookingCode}`)
       setLatestBookingCode(bookingCode)
 
-      window.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-      })
+      setTimeout(() => {
+        window.scrollTo({
+          top: 0,
+          behavior: 'smooth',
+        })
+      }, 100)
 
       setFullName('')
       setPhone('')
