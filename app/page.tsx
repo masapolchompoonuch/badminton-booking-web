@@ -8,11 +8,17 @@ const timeSlots = [
   { start: '09:00', end: '10:00' },
   { start: '10:00', end: '11:00' },
   { start: '11:00', end: '12:00' },
+  { start: '12:00', end: '13:00' },
+  { start: '13:00', end: '14:00' },
+  { start: '14:00', end: '15:00' },
+  { start: '15:00', end: '16:00' },
+  { start: '16:00', end: '17:00' },
   { start: '17:00', end: '18:00' },
   { start: '18:00', end: '19:00' },
   { start: '19:00', end: '20:00' },
   { start: '20:00', end: '21:00' },
   { start: '21:00', end: '22:00' },
+  { start: '22:00', end: '23:00' },
 ]
 
 function getDateString(daysFromToday: number) {
@@ -42,8 +48,8 @@ export default function Home() {
   const today = getTodayParts()
 
   const [bookingDate, setBookingDate] = useState(getDateString(0))
-  const [startTime, setStartTime] = useState('18:00')
-  const [endTime, setEndTime] = useState('19:00')
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
   const [courts, setCourts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedCourtId, setSelectedCourtId] = useState<number | null>(null)
@@ -349,6 +355,36 @@ export default function Home() {
     setSlipUploaded(true)
   }
 
+  function isPastTimeSlot(time: string) {
+    const now = new Date()
+    const selectedDateTime = new Date(`${bookingDate}T${time}`)
+
+    return selectedDateTime <= now
+  }
+
+  function areAllTodaySlotsPast() {
+  return timeSlots.every((slot) => isPastTimeSlot(slot.start))
+}
+
+useEffect(() => {
+  if (bookingDate === getDateString(0) && areAllTodaySlotsPast()) {
+
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    setSelectedDay(tomorrow.getDate())
+    setSelectedMonth(tomorrow.getMonth() + 1)
+    setSelectedYear(tomorrow.getFullYear())
+
+    setBookingDate(getDateString(1))
+
+    setStartTime('')
+    setEndTime('')
+    setCourts([])
+    setSelectedCourtId(null)
+  }
+}, [bookingDate])
+
   return (
     <>
       {slipUploaded && (
@@ -369,7 +405,7 @@ export default function Home() {
             <button
               onClick={() => {
                 setSlipUploaded(false)
-                window.location.href = '/'
+                window.location.href = '/thankyou'
               }}
               className="mt-6 w-full rounded-2xl bg-emerald-500 p-4 font-bold text-black transition hover:bg-emerald-400"
             >
@@ -417,6 +453,8 @@ export default function Home() {
                     value={selectedDay}
                     onChange={(e) => {
                       setSelectedDay(Number(e.target.value))
+                      setStartTime('')
+                      setEndTime('')
                       setCourts([])
                       setSelectedCourtId(null)
                     }}
@@ -509,12 +547,17 @@ export default function Home() {
                     const isSelected =
                       startTime === slot.start && endTime === slot.end
 
+                    const isPast = isPastTimeSlot(slot.start)
+
                     return (
                       <button
                         key={`${slot.start}-${slot.end}`}
+                        disabled={isPast}
                         onClick={() => selectTimeSlot(slot.start, slot.end)}
                         className={`rounded-2xl border p-4 text-left transition ${
-                          isSelected
+                          isPast
+                            ? 'cursor-not-allowed border-white/5 bg-neutral-900 text-neutral-600'
+                            : isSelected
                             ? 'border-emerald-400 bg-emerald-500 text-black'
                             : 'border-white/10 bg-neutral-950 hover:border-emerald-400'
                         }`}
@@ -529,9 +572,14 @@ export default function Home() {
 
                 <button
                   onClick={findAvailableCourts}
-                  className="mt-5 w-full rounded-2xl bg-white p-4 font-bold text-black transition hover:bg-neutral-200"
+                  disabled={!startTime || !endTime}
+                  className={`mt-5 w-full rounded-2xl p-4 font-bold transition ${
+                    !startTime || !endTime
+                      ? 'cursor-not-allowed border border-white/10 bg-neutral-800 text-neutral-500'
+                      : 'bg-white text-black hover:bg-neutral-200'
+                  }`}
                 >
-                  {loading ? 'Searching...' : 'Search available courts'}
+                  Search available courts
                 </button>
               </div>
 
