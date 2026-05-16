@@ -65,6 +65,7 @@ export default function Home() {
 
   const [bookingCart, setBookingCart] = useState<any[]>([])
   const [successMessage, setSuccessMessage] = useState('')
+  const [courtMessage, setCourtMessage] = useState('')
   const [latestBookingCode, setLatestBookingCode] = useState('')
   const [slipFile, setSlipFile] = useState<File | null>(null)
   const [uploadingSlip, setUploadingSlip] = useState(false)
@@ -127,6 +128,12 @@ export default function Home() {
       setCourts([])
     } else {
       setCourts(data || [])
+
+      if ((data || []).length === 0) {
+        setCourtMessage('This time slot has been fully booked.')
+      } else {
+        setCourtMessage('')
+      }
     }
 
     setLoading(false)
@@ -359,33 +366,37 @@ export default function Home() {
 
   function isPastTimeSlot(time: string) {
     const now = new Date()
-    const selectedDateTime = new Date(`${bookingDate}T${time}`)
+    const selectedDateTime = new Date(`${bookingDate}T${time}:00`)
 
     return selectedDateTime <= now
   }
+
+  function isSlotUnavailable(slot: any) {
+  return slot.availableCourts === 0
+}
 
   function areAllTodaySlotsPast() {
   return timeSlots.every((slot) => isPastTimeSlot(slot.start))
 }
 
-useEffect(() => {
-  if (bookingDate === getDateString(0) && areAllTodaySlotsPast()) {
+// useEffect(() => {
+//   if (bookingDate === getDateString(0) && areAllTodaySlotsPast()) {
 
-    const tomorrow = new Date()
-    tomorrow.setDate(tomorrow.getDate() + 1)
+//     const tomorrow = new Date()
+//     tomorrow.setDate(tomorrow.getDate() + 1)
 
-    setSelectedDay(tomorrow.getDate())
-    setSelectedMonth(tomorrow.getMonth() + 1)
-    setSelectedYear(tomorrow.getFullYear())
+//     setSelectedDay(tomorrow.getDate())
+//     setSelectedMonth(tomorrow.getMonth() + 1)
+//     setSelectedYear(tomorrow.getFullYear())
 
-    setBookingDate(getDateString(1))
+//     setBookingDate(getDateString(1))
 
-    setStartTime('')
-    setEndTime('')
-    setCourts([])
-    setSelectedCourtId(null)
-  }
-}, [bookingDate])
+//     setStartTime('')
+//     setEndTime('')
+//     setCourts([])
+//     setSelectedCourtId(null)
+//   }
+// }, [bookingDate])
 
   return (
     <>
@@ -578,14 +589,15 @@ useEffect(() => {
                       startTime === slot.start && endTime === slot.end
 
                     const isPast = isPastTimeSlot(slot.start)
+                    const isUnavailable = isSlotUnavailable(slot)
 
                     return (
                       <button
                         key={`${slot.start}-${slot.end}`}
-                        disabled={isPast}
+                        disabled={isPast || isUnavailable}
                         onClick={() => selectTimeSlot(slot.start, slot.end)}
                         className={`rounded-2xl border p-4 text-left transition ${
-                          isPast
+                          isPast || isUnavailable
                             ? 'cursor-not-allowed border-white/5 bg-neutral-900 text-neutral-600'
                             : isSelected
                             ? 'border-emerald-400 bg-emerald-500 text-black'
@@ -611,6 +623,11 @@ useEffect(() => {
                 >
                   Search available courts
                 </button>
+                {courtMessage && (
+                  <p className="mt-3 text-sm font-semibold text-red-400">
+                    {courtMessage}
+                  </p>
+                )}
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
