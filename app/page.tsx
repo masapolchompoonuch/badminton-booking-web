@@ -64,6 +64,7 @@ export default function Home() {
   const [note, setNote] = useState('')
 
   const [bookingCart, setBookingCart] = useState<any[]>([])
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [courtMessage, setCourtMessage] = useState('')
   const [latestBookingCode, setLatestBookingCode] = useState('')
@@ -128,6 +129,14 @@ export default function Home() {
       setCourts([])
     } else {
       setCourts(data || [])
+        if ((data || []).length > 0) {
+          setTimeout(() => {
+            document.getElementById('available-courts')?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            })
+          }, 200)
+        }
 
       if ((data || []).length === 0) {
         setCourtMessage('This time slot has been fully booked.')
@@ -180,6 +189,13 @@ export default function Home() {
 
     setSelectedCourtId(null)
     setCourts([])
+    setShowCustomerForm(false)
+    setTimeout(() => {
+      document.getElementById('booking-cart-section')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 200)
   }
 
   function removeCartItem(index: number) {
@@ -630,7 +646,10 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
+              <div
+                id="available-courts"
+                className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
+              >
                 <div className="mb-5 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 font-bold text-black">
                     3
@@ -691,8 +710,13 @@ export default function Home() {
             </section>
 
             <aside className="space-y-6">
-              <div className="sticky top-6 rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
-                <h2 className="text-2xl font-bold">Booking cart</h2>
+              <div
+                id="booking-cart-section"
+                className="sticky top-6 rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
+              >
+                <h2 id="booking-cart" className="scroll-mt-6 text-2xl font-bold">
+                  Booking cart
+                </h2>
 
                 <div className="mt-5 space-y-3">
                   {bookingCart.length === 0 && (
@@ -731,6 +755,20 @@ export default function Home() {
                       </div>
                     </div>
                   ))}
+                  {bookingCart.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.scrollTo({
+                          top: 340,
+                          behavior: 'smooth',
+                        })
+                      }}
+                      className="mt-2 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 font-bold text-emerald-300 transition hover:bg-emerald-500/20"
+                    >
+                      + Add another booking
+                    </button>
+                  )}
                 </div>
 
                 <div className="mt-5 mb-8 rounded-2xl bg-white/5 p-4">
@@ -742,8 +780,30 @@ export default function Home() {
                   </div>
                 </div>
 
-                {bookingCart.length > 0 && (
-                  <div className="mt-6 space-y-4 rounded-2xl border border-white/10 bg-neutral-950 p-5">
+                {bookingCart.length > 0 && !showCustomerForm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomerForm(true)
+
+                      setTimeout(() => {
+                        document.getElementById('customer-info')?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start',
+                        })
+                      }, 100)
+                    }}
+                    className="w-full rounded-2xl bg-white p-4 font-bold text-black transition hover:bg-neutral-200"
+                  >
+                    Continue
+                  </button>
+                )}
+
+                {bookingCart.length > 0 && showCustomerForm && (
+                  <div
+                    id="customer-info"
+                    className="mt-6 space-y-4 rounded-2xl border border-white/10 bg-neutral-950 p-4"
+                  >
                     <h3 className="text-xl font-bold">Your information</h3>
 
                     <div>
