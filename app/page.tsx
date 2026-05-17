@@ -382,9 +382,14 @@ export default function Home() {
 
   function isPastTimeSlot(time: string) {
     const now = new Date()
+
+    const thailandNow = new Date(
+      now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' })
+    )
+
     const selectedDateTime = new Date(`${bookingDate}T${time}:00`)
 
-    return selectedDateTime <= now
+    return selectedDateTime <= thailandNow
   }
 
   function isSlotUnavailable(slot: any) {
