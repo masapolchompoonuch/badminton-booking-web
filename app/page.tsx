@@ -65,6 +65,7 @@ export default function Home() {
 
   const [bookingCart, setBookingCart] = useState<any[]>([])
   const [showCustomerForm, setShowCustomerForm] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [courtMessage, setCourtMessage] = useState('')
   const [latestBookingCode, setLatestBookingCode] = useState('')
@@ -109,6 +110,10 @@ export default function Home() {
 
     return data.map((item) => item.court_id)
   }
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   async function findAvailableCourts() {
     setLoading(true)
@@ -192,7 +197,7 @@ export default function Home() {
     setShowCustomerForm(false)
     setTimeout(() => {
       document.getElementById('booking-cart-section')?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: 'auto',
         block: 'start',
       })
     }, 200)
@@ -609,7 +614,7 @@ export default function Home() {
                     const isSelected =
                       startTime === slot.start && endTime === slot.end
 
-                    const isPast = isPastTimeSlot(slot.start)
+                    const isPast = mounted && isPastTimeSlot(slot.start)
                     const isUnavailable = isSlotUnavailable(slot)
 
                     return (
