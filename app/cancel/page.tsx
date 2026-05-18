@@ -328,7 +328,7 @@ const [cancelDone, setCancelDone] =
             />
 
             <button
-              onClick={searchBooking}
+              onClick={() => searchBooking()}
               disabled={
                 loading ||
                 !bookingCode ||
