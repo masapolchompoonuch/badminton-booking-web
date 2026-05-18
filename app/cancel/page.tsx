@@ -223,7 +223,10 @@ const [cancelDone, setCancelDone] =
   return (
     <>
     {showCancelConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+        <div
+        id="cancel-confirm-popup"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+        >
         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-8 text-center shadow-2xl">
             <h2 className="text-3xl font-bold text-white">Are you sure?</h2>
 
@@ -504,14 +507,16 @@ const [cancelDone, setCancelDone] =
               )}
               <button
                 onClick={() => {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth',
-                })
+                setShowCancelConfirm(true)
 
                 setTimeout(() => {
-                    setShowCancelConfirm(true)
-                }, 300)
+                    document
+                    .getElementById('cancel-confirm-popup')
+                    ?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                    })
+                }, 100)
                 }}
                 disabled={loading || selectedItems.length === 0}
                 className={`mt-8 w-full rounded-2xl px-5 py-3 font-bold transition ${
