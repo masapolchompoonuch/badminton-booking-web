@@ -40,7 +40,13 @@ export default function CancelPage() {
   const [cancelSuccess, setCancelSuccess] =
     useState(false)
 
-  async function searchBooking() {
+const [showCancelConfirm, setShowCancelConfirm] =
+  useState(false)
+
+const [cancelDone, setCancelDone] =
+  useState(false)
+
+  async function searchBooking(shouldScroll = true) {
     setLoading(true)
     setBooking(null)
     setSelectedItems([])
@@ -92,6 +98,14 @@ export default function CancelPage() {
     }
 
     setBooking(data)
+    if (shouldScroll) {
+        setTimeout(() => {
+            document.getElementById('booking-details')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+            })
+        }, 100)
+        }
   }
 
   const cancellableItems = useMemo(() => {
@@ -135,11 +149,11 @@ export default function CancelPage() {
       return
     }
 
-    const confirmCancel = confirm(
-      'Are you sure you want to cancel selected booking item(s)?'
-    )
+    // const confirmCancel = confirm(
+    //   'Are you sure you want to cancel selected booking item(s)?'
+    // )
 
-    if (!confirmCancel) return
+    // if (!confirmCancel) return
 
     setLoading(true)
 
@@ -203,10 +217,74 @@ export default function CancelPage() {
 
     setCancelSuccess(true)
 
-    await searchBooking()
+    await searchBooking(false)
   }
 
   return (
+    <>
+    {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-8 text-center shadow-2xl">
+            <h2 className="text-3xl font-bold text-white">Are you sure?</h2>
+
+            <p className="mt-4 mb-8 text-neutral-400">
+            Do you want to cancel the selected booking?
+            </p>
+
+            <div className="mt-8 grid grid-cols-2 gap-3">
+            <button
+                onClick={() => setShowCancelConfirm(false)}
+                className="rounded-2xl border border-white/10 p-4 font-bold text-white"
+            >
+                No
+            </button>
+
+            <button
+                onClick={async () => {
+                setShowCancelConfirm(false)
+                await cancelSelectedItems()
+                setCancelDone(true)
+                }}
+                className="rounded-2xl bg-red-500 p-4 font-bold text-white"
+            >
+                Yes
+            </button>
+            </div>
+        </div>
+        </div>
+    )}
+
+    {cancelDone && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+        <div className="w-full max-w-md rounded-3xl border border-emerald-500/30 bg-neutral-900 p-8 text-center shadow-2xl">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-3xl font-bold text-black">
+            ✓
+            </div>
+
+            <h2 className="text-3xl font-bold text-white">Booking cancelled</h2>
+
+            <p className="mt-4 mb-8 text-neutral-400">
+            Your booking has been cancelled successfully.
+            </p>
+
+            <button
+            onClick={() => {
+                setCancelDone(false)
+
+                setTimeout(() => {
+                    document.getElementById('booking-details')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                    })
+                }, 100)
+                }}
+            className="mt-8 w-full rounded-2xl bg-emerald-500 p-4 font-bold text-black"
+            >
+            Finish
+            </button>
+        </div>
+        </div>
+    )}
     <main className="min-h-screen bg-neutral-950 text-white">
       <section className="mx-auto max-w-6xl px-5 py-10 md:py-16">
         <div className="mx-auto mb-10 max-w-4xl rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-950 p-8 md:p-10">
@@ -279,7 +357,10 @@ export default function CancelPage() {
         )}
 
         {booking && (
-          <div className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
+          <div
+            id="booking-details"
+            className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
+            >
             <div className="mb-6">
               <h2 className="text-3xl font-bold">
                 Booking Details
@@ -296,7 +377,7 @@ export default function CancelPage() {
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={selectAllItems}
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 font-semibold transition hover:bg-white hover:text-black"
@@ -311,16 +392,7 @@ export default function CancelPage() {
                 Clear Selection
               </button>
 
-              <button
-                onClick={cancelSelectedItems}
-                disabled={
-                  loading ||
-                  selectedItems.length === 0
-                }
-                className="rounded-2xl bg-red-500 px-5 py-3 font-bold text-white transition hover:scale-[1.03] hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-neutral-600"
-              >
-                Cancel Selected
-              </button>
+             
             </div>
 
             <div className="mt-6 space-y-4">
@@ -430,10 +502,31 @@ export default function CancelPage() {
                   )
                 }
               )}
+              <button
+                onClick={() => {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth',
+                })
+
+                setTimeout(() => {
+                    setShowCancelConfirm(true)
+                }, 300)
+                }}
+                disabled={loading || selectedItems.length === 0}
+                className={`mt-8 w-full rounded-2xl px-5 py-3 font-bold transition ${
+                    loading || selectedItems.length === 0
+                        ? 'cursor-not-allowed border border-white/10 bg-neutral-700 text-neutral-400'
+                        : 'bg-red-500 text-white hover:scale-[1.03] hover:bg-red-600'
+                    }`}
+                >
+                Cancel Selected
+                </button>
             </div>
           </div>
         )}
       </section>
     </main>
+    </>
   )
 }
