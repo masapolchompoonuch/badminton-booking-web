@@ -1,39 +1,105 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
+type Customer = {
+  full_name: string | null
+  phone: string | null
+  email: string | null
+}
+
+type MaybeArray<T> = T | T[]
+
+type BookingItem = {
+  booking_date: string
+  start_time: string
+  end_time: string
+  price: number
+  status: string
+  courts: MaybeArray<{
+    name: string | null
+  }> | null
+}
+
+type Booking = {
+  booking_code: string
+  total_amount: number
+  status: string
+  payment_status: string
+  slip_url: string | null
+  created_at: string
+  customers: MaybeArray<Customer> | null
+  booking_items: BookingItem[] | null
+}
+
+type BookingFilter = {
+  day: number
+  month: number
+  year: number
+  status: string
+  search: string
+}
+
+function getTodayParts() {
+  const today = new Date()
+
+  return {
+    day: today.getDate(),
+    month: today.getMonth() + 1,
+    year: today.getFullYear(),
+  }
+}
+
+function formatDate(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function firstRelation<T>(relation: MaybeArray<T> | null | undefined) {
+  if (Array.isArray(relation)) {
+    return relation[0] ?? null
+  }
+
+  return relation ?? null
+}
 
 export default function AdminPage() {
-    const router = useRouter()
-  const [bookings, setBookings] = useState<any[]>([])
+  const router = useRouter()
+  const initialToday = useMemo(() => getTodayParts(), [])
+
+  const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(false)
 
-
-  const [filterDate, setFilterDate] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [searchText, setSearchText] = useState('')
+  const [filterDay, setFilterDay] = useState(initialToday.day)
+  const [filterMonth, setFilterMonth] = useState(initialToday.month)
+  const [filterYear, setFilterYear] = useState(initialToday.year)
 
-  useEffect(() => {
-    async function checkAuth() {
-        const {
-        data: { session },
-        } = await supabase.auth.getSession()
+  const currentFilter = useMemo<BookingFilter>(
+    () => ({
+      day: filterDay,
+      month: filterMonth,
+      year: filterYear,
+      status: filterStatus,
+      search: searchText,
+    }),
+    [filterDay, filterMonth, filterYear, filterStatus, searchText]
+  )
 
-        if (!session) {
-        router.push('/admin/login')
-        }
-    }
+  const initialFilter = useMemo<BookingFilter>(
+    () => ({
+      day: initialToday.day,
+      month: initialToday.month,
+      year: initialToday.year,
+      status: '',
+      search: '',
+    }),
+    [initialToday]
+  )
 
-    checkAuth()
-    }, [])
-
-  useEffect(() => {
-    fetchBookings()
-    }, [])
-
-  async function fetchBookings() {
+  const fetchBookings = useCallback(async (filter: BookingFilter) => {
     setLoading(true)
 
     const { data, error } = await supabase
@@ -70,23 +136,22 @@ export default function AdminPage() {
       return
     }
 
-    const filteredData = (data || []).filter((booking: any) => {
-      const matchesDate = filterDate
-        ? booking.booking_items?.some(
-            (item: any) => item.booking_date === filterDate
-          )
-        : true
+    const selectedFilterDate = formatDate(filter.year, filter.month, filter.day)
+    const search = filter.search.toLowerCase().trim()
+    const filteredData = ((data || []) as unknown as Booking[]).filter((booking) => {
+      const customer = firstRelation(booking.customers)
+      const matchesDate = booking.booking_items?.some(
+        (item) => item.booking_date === selectedFilterDate
+      ) ?? false
 
-      const matchesStatus = filterStatus
-        ? booking.status === filterStatus
+      const matchesStatus = filter.status
+        ? booking.status === filter.status
         : true
-
-      const search = searchText.toLowerCase().trim()
 
       const matchesSearch = search
-        ? booking.booking_code?.toLowerCase().includes(search) ||
-          booking.customers?.phone?.toLowerCase().includes(search) ||
-          booking.customers?.full_name?.toLowerCase().includes(search)
+        ? booking.booking_code.toLowerCase().includes(search) ||
+          customer?.phone?.toLowerCase().includes(search) ||
+          customer?.full_name?.toLowerCase().includes(search)
         : true
 
       return matchesDate && matchesStatus && matchesSearch
@@ -94,14 +159,35 @@ export default function AdminPage() {
 
     setBookings(filteredData)
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    async function checkAuth() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) {
+        router.push('/admin/login')
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => fetchBookings(initialFilter))
+  }, [fetchBookings, initialFilter])
 
   async function updateBookingStatus(
     bookingCode: string,
     newStatus: string,
     newPaymentStatus?: string
     ) {
-    const updateData: any = {
+    const updateData: {
+      status: string
+      payment_status?: string
+    } = {
         status: newStatus,
     }
 
@@ -145,24 +231,32 @@ export default function AdminPage() {
         return
     }
 
-    await fetchBookings()
-    }
+    await fetchBookings(currentFilter)
+  }
 
 
 
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/admin/login')
-    }
+  }
 
   function clearFilters() {
-    setFilterDate('')
+    const today = getTodayParts()
+    const nextFilter = {
+      day: today.day,
+      month: today.month,
+      year: today.year,
+      status: '',
+      search: '',
+    }
+
+    setFilterDay(nextFilter.day)
+    setFilterMonth(nextFilter.month)
+    setFilterYear(nextFilter.year)
     setFilterStatus('')
     setSearchText('')
-
-    setTimeout(() => {
-      fetchBookings()
-    }, 0)
+    fetchBookings(nextFilter)
   }
 
   function getStatusStyle(status: string) {
@@ -185,76 +279,87 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-neutral-950 p-6 text-white md:p-8">
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-            <p className="mb-2 text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
-                Court Management
+      <div className="mb-8 flex items-start justify-between gap-4 md:items-center">
+        <div className="min-w-0">
+          <div className="mb-2">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
+              Court Management
             </p>
+          </div>
 
-            <h1 className="text-4xl font-bold md:text-5xl">
-                Admin Dashboard
-            </h1>
+          <h1 className="text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
+            Admin Dashboard
+          </h1>
         </div>
 
         <button
-            onClick={handleLogout}
-            style={{
-                width: '220px',
-                height: '56px',
-                borderRadius: '16px',
-            }}
-            className="bg-red-500 font-semibold text-white transition hover:bg-red-400"
-            >
-            Logout
+          onClick={handleLogout}
+          className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-red-500 px-5 text-sm font-semibold text-white transition hover:bg-red-400 md:h-14 md:w-[220px] md:rounded-2xl md:text-base"
+        >
+          Logout
         </button>
-        </div>
-
-      <div className="mb-6 grid gap-4 md:grid-cols-4">
-        <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5">
-          <p className="text-sm text-neutral-400">Showing bookings</p>
-          <p className="mt-2 text-3xl font-bold">{bookings.length}</p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5">
-          <p className="text-sm text-neutral-400">Date filter</p>
-          <p className="mt-2 text-lg font-semibold">
-            {filterDate || 'All dates'}
-          </p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5">
-          <p className="text-sm text-neutral-400">Status filter</p>
-          <p className="mt-2 text-lg font-semibold">
-            {filterStatus || 'All status'}
-          </p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5">
-          <p className="text-sm text-neutral-400">Search</p>
-          <p className="mt-2 truncate text-lg font-semibold">
-            {searchText || 'None'}
-          </p>
-        </div>
       </div>
 
       <section className="mb-8 rounded-3xl border border-white/10 bg-neutral-900 p-5">
         <h2 className="mb-4 text-xl font-bold">Filters</h2>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="min-w-0">
+            <label className="mb-2 block text-sm text-neutral-400">
+              Showing bookings
+            </label>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <div>
+            <div className="flex h-[58px] w-full items-center rounded-2xl border border-white/10 bg-neutral-950 px-4">
+              <span className="text-2xl font-bold text-white">
+                {bookings.length}
+              </span>
+            </div>
+          </div>
+
+          <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
               Filter by date
             </label>
 
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4"
-            />
+            <div className="grid grid-cols-3 gap-2">
+                <select
+                    value={filterDay}
+                    onChange={(e) => setFilterDay(Number(e.target.value))}
+                    className="h-[58px] min-w-0 rounded-2xl border border-white/10 bg-neutral-950 px-3"
+                >
+                    {Array.from({ length: 31 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                        {i + 1}
+                    </option>
+                    ))}
+                </select>
+
+                <select
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(Number(e.target.value))}
+                    className="h-[58px] min-w-0 rounded-2xl border border-white/10 bg-neutral-950 px-3"
+                >
+                    {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                        {i + 1}
+                    </option>
+                    ))}
+                </select>
+
+                <select
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(Number(e.target.value))}
+                    className="h-[58px] min-w-0 rounded-2xl border border-white/10 bg-neutral-950 px-3"
+                >
+                    {[2025, 2026, 2027].map((year) => (
+                    <option key={year} value={year}>
+                        {year}
+                    </option>
+                    ))}
+                </select>
+                </div>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
               Filter by status
             </label>
@@ -262,7 +367,7 @@ export default function AdminPage() {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4"
+              className="h-[58px] w-full rounded-2xl border border-white/10 bg-neutral-950 px-4"
             >
               <option value="">All status</option>
               <option value="pending">Pending</option>
@@ -272,7 +377,7 @@ export default function AdminPage() {
             </select>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
               Search booking / phone / name
             </label>
@@ -282,24 +387,30 @@ export default function AdminPage() {
               placeholder="BK-... / phone / name"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4"
+              className="h-[58px] w-full rounded-2xl border border-white/10 bg-neutral-950 px-4"
             />
           </div>
 
-          <div className="flex gap-3 md:items-end">
+          <div className="min-w-0">
+            <span className="mb-2 block text-sm text-transparent">
+              Actions
+            </span>
+
+            <div className="flex gap-3">
             <button
-              onClick={fetchBookings}
-              className="flex-1 rounded-2xl bg-white p-4 font-bold text-black transition hover:bg-neutral-200"
+              onClick={() => fetchBookings(currentFilter)}
+              className="h-[58px] flex-1 rounded-2xl bg-white px-4 font-bold text-black transition hover:bg-neutral-200"
             >
               Apply
             </button>
 
             <button
               onClick={clearFilters}
-              className="flex-1 rounded-2xl border border-white/10 p-4 font-bold transition hover:border-red-400 hover:text-red-400"
+              className="h-[58px] flex-1 rounded-2xl border border-white/10 px-4 font-bold transition hover:border-red-400 hover:text-red-400"
             >
               Clear
             </button>
+            </div>
           </div>
         </div>
       </section>
@@ -316,6 +427,11 @@ export default function AdminPage() {
             key={booking.booking_code}
             className="rounded-3xl border border-white/10 bg-neutral-900 p-5 shadow-xl"
           >
+            {(() => {
+              const customer = firstRelation(booking.customers)
+
+              return (
+                <>
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-2xl font-bold">
@@ -345,17 +461,17 @@ export default function AdminPage() {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl bg-neutral-950 p-4">
                 <p className="mb-2 font-bold">Customer</p>
-                <p>Name: {booking.customers?.full_name || '-'}</p>
-                <p>Phone: {booking.customers?.phone || '-'}</p>
-                <p>Email: {booking.customers?.email || '-'}</p>
+                <p>Name: {customer?.full_name || '-'}</p>
+                <p>Phone: {customer?.phone || '-'}</p>
+                <p>Email: {customer?.email || '-'}</p>
               </div>
 
               <div className="rounded-2xl bg-neutral-950 p-4 md:col-span-2">
                 <p className="mb-2 font-bold">Booking details</p>
 
-                {booking.booking_items?.map((item: any, index: number) => (
+                {booking.booking_items?.map((item, index) => (
                   <div key={index} className="mb-3 last:mb-0">
-                    <p>Court: {item.courts?.name || '-'}</p>
+                    <p>Court: {firstRelation(item.courts)?.name || '-'}</p>
                     <p>Date: {item.booking_date}</p>
                     <p>
                       Time: {item.start_time} - {item.end_time}
@@ -378,32 +494,38 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="mt-4 border-t border-white/10 pt-4">
-              <div className="space-y-4">
-                <p className="text-lg font-bold">
+            <div className="mt-4 border-t border-white/10 pt-5">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div className="space-y-3">
+                  <p className="text-lg font-bold">
                     Total: {booking.total_amount} THB
-                </p>
+                  </p>
 
-                {booking.slip_url ? (
-                    <div className="w-fit rounded-2xl border border-white/10 bg-neutral-950 p-4">
-                    <p className="mb-3 font-bold text-white">Payment Slip</p>
+                  {booking.slip_url ? (
+                    <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 sm:w-fit sm:min-w-[260px] sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-bold text-white">Payment Slip</p>
+                        <p className="mt-1 text-sm text-neutral-500">
+                          Uploaded
+                        </p>
+                      </div>
 
-                    <a
+                      <a
                         href={booking.slip_url}
                         target="_blank"
-                        className="inline-block rounded-xl bg-white px-4 py-2 font-bold text-black transition hover:bg-neutral-200"
-                    >
+                        className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 font-bold text-black transition hover:bg-neutral-200"
+                      >
                         View Slip
-                    </a>
+                      </a>
                     </div>
-                ) : (
-                    <div className="w-fit rounded-2xl border border-white/10 bg-neutral-950 p-4 text-neutral-400">
-                    No payment slip uploaded
+                  ) : (
+                    <div className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4 text-neutral-400 sm:w-fit sm:min-w-[260px]">
+                      No payment slip uploaded
                     </div>
-                )}
+                  )}
                 </div>
 
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap lg:justify-end">
                 {booking.payment_status !== 'paid' &&
                 booking.status !== 'cancelled' && (
                 <button
@@ -414,7 +536,7 @@ export default function AdminPage() {
                         'paid'
                     )
                     }
-                    className="w-full rounded-xl bg-emerald-500 px-4 py-2 font-semibold text-black transition hover:bg-emerald-400"
+                    className="h-11 rounded-xl bg-emerald-500 px-5 font-semibold text-black transition hover:bg-emerald-400 sm:min-w-[150px]"
                 >
                     Mark as Paid
                 </button>
@@ -427,7 +549,7 @@ export default function AdminPage() {
                       'completed'
                     )
                   }
-                  className="w-full rounded-xl bg-blue-500 px-4 py-2 font-semibold text-white transition hover:bg-blue-400"
+                  className="h-11 rounded-xl bg-blue-500 px-5 font-semibold text-white transition hover:bg-blue-400 sm:min-w-[150px]"
                 >
                   Complete
                 </button>
@@ -439,12 +561,16 @@ export default function AdminPage() {
                       'cancelled'
                     )
                   }
-                  className="w-full rounded-xl bg-red-500 px-4 py-2 font-semibold text-white transition hover:bg-red-400"
+                  className="h-11 rounded-xl bg-red-500 px-5 font-semibold text-white transition hover:bg-red-400 sm:min-w-[150px]"
                 >
                   Cancel
                 </button>
               </div>
+              </div>
             </div>
+                </>
+              )
+            })()}
           </div>
         ))}
 

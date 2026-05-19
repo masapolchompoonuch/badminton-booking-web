@@ -3,6 +3,43 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
+type MaybeArray<T> = T | T[]
+
+type CancelCustomer = {
+  full_name: string | null
+  phone: string | null
+}
+
+type CancelBookingItem = {
+  id: number
+  booking_date: string
+  start_time: string
+  end_time: string
+  price: number
+  status: string
+  courts: MaybeArray<{
+    name: string | null
+  }> | null
+}
+
+type CancelBooking = {
+  id: number
+  booking_code: string
+  status: string
+  payment_status: string
+  total_amount: number
+  customers: MaybeArray<CancelCustomer> | null
+  booking_items: CancelBookingItem[] | null
+}
+
+function firstRelation<T>(relation: MaybeArray<T> | null | undefined) {
+  if (Array.isArray(relation)) {
+    return relation[0] ?? null
+  }
+
+  return relation ?? null
+}
+
 function canCancelBooking(
   bookingDate: string,
   startTime: string
@@ -29,7 +66,7 @@ export default function CancelPage() {
   const [phone, setPhone] = useState('')
 
   const [booking, setBooking] =
-    useState<any>(null)
+    useState<CancelBooking | null>(null)
 
   const [loading, setLoading] =
     useState(false)
@@ -52,7 +89,7 @@ const [cancelDone, setCancelDone] =
     setSelectedItems([])
     setCancelSuccess(false)
 
-    const { data, error } = await supabase
+    const { data: bookingData, error } = await supabase
       .from('bookings')
       .select(`
         id,
@@ -81,16 +118,13 @@ const [cancelDone, setCancelDone] =
 
     setLoading(false)
 
-    if (error || !data) {
+    if (error || !bookingData) {
       alert('Booking not found')
       return
     }
 
-    const customerPhone = Array.isArray(
-      data.customers
-    )
-      ? data.customers[0]?.phone
-      : (data.customers as any)?.phone
+    const data = bookingData as unknown as CancelBooking
+    const customerPhone = firstRelation(data.customers)?.phone
 
     if (customerPhone !== phone) {
       alert('Phone number does not match')
@@ -112,7 +146,7 @@ const [cancelDone, setCancelDone] =
     if (!booking?.booking_items) return []
 
     return booking.booking_items.filter(
-      (item: any) =>
+      (item) =>
         item.status !== 'cancelled' &&
         canCancelBooking(
           item.booking_date,
@@ -131,7 +165,7 @@ const [cancelDone, setCancelDone] =
 
   function selectAllItems() {
     const allIds = cancellableItems.map(
-      (item: any) => item.id
+      (item) => item.id
     )
 
     setSelectedItems(allIds)
@@ -172,23 +206,23 @@ const [cancelDone, setCancelDone] =
     }
 
     const updatedItems =
-      booking.booking_items.map((item: any) =>
+      booking.booking_items?.map((item) =>
         selectedItems.includes(item.id)
           ? {
               ...item,
               status: 'cancelled',
             }
           : item
-      )
+      ) ?? []
 
     const activeItems = updatedItems.filter(
-      (item: any) =>
+      (item) =>
         item.status !== 'cancelled'
     )
 
     const newTotalAmount =
       activeItems.reduce(
-        (sum: number, item: any) =>
+        (sum, item) =>
           sum + Number(item.price),
         0
       )
@@ -400,7 +434,7 @@ const [cancelDone, setCancelDone] =
 
             <div className="mt-6 space-y-4">
               {booking.booking_items?.map(
-                (item: any) => {
+                (item) => {
                   const canCancel =
                     item.status !==
                       'cancelled' &&
@@ -436,7 +470,7 @@ const [cancelDone, setCancelDone] =
 
                                 <h3 className="text-2xl font-bold">
                                 {
-                                    item.courts
+                                    firstRelation(item.courts)
                                     ?.name
                                 }
                                 </h3>

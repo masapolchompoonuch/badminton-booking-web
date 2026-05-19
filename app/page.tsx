@@ -1,7 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { supabase } from '@/lib/supabase'
+
+type Court = {
+  id: number
+  name: string
+  court_number: number
+  court_type: string
+  hourly_rate: number
+  is_active: boolean
+}
+
+type BookingCartItem = {
+  court_id: number
+  court_name: string
+  booking_date: string
+  start_time: string
+  end_time: string
+  price: number
+}
 
 const timeSlots = [
   { start: '08:00', end: '09:00' },
@@ -21,12 +39,6 @@ const timeSlots = [
   { start: '22:00', end: '23:00' },
 ]
 
-function getDateString(daysFromToday: number) {
-  const date = new Date()
-  date.setDate(date.getDate() + daysFromToday)
-  return date.toISOString().split('T')[0]
-}
-
 function getTodayParts() {
   const today = new Date()
   return {
@@ -44,13 +56,24 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
 }
 
+function subscribeToClient() {
+  return () => {}
+}
+
+function getClientSnapshot() {
+  return true
+}
+
+function getServerSnapshot() {
+  return false
+}
+
 export default function Home() {
   const today = getTodayParts()
 
-  const [bookingDate, setBookingDate] = useState(getDateString(0))
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
-  const [courts, setCourts] = useState<any[]>([])
+  const [courts, setCourts] = useState<Court[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedCourtId, setSelectedCourtId] = useState<number | null>(null)
 
@@ -63,9 +86,13 @@ export default function Home() {
   const [email, setEmail] = useState('')
   const [note, setNote] = useState('')
 
-  const [bookingCart, setBookingCart] = useState<any[]>([])
+  const [bookingCart, setBookingCart] = useState<BookingCartItem[]>([])
   const [showCustomerForm, setShowCustomerForm] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const mounted = useSyncExternalStore(
+    subscribeToClient,
+    getClientSnapshot,
+    getServerSnapshot
+  )
   const [successMessage, setSuccessMessage] = useState('')
   const [courtMessage, setCourtMessage] = useState('')
   const [latestBookingCode, setLatestBookingCode] = useState('')
@@ -74,23 +101,8 @@ export default function Home() {
   const [slipUploaded, setSlipUploaded] = useState(false)
 
   const selectedCourt = courts.find((court) => court.id === selectedCourtId)
+  const bookingDate = formatDate(selectedYear, selectedMonth, selectedDay)
   const totalAmount = bookingCart.reduce((sum, item) => sum + Number(item.price), 0)
-
-  useEffect(() => {
-    const maxDay = getDaysInMonth(selectedYear, selectedMonth)
-
-    if (selectedDay > maxDay) {
-      setSelectedDay(maxDay)
-      return
-    }
-
-    const newDate = formatDate(selectedYear, selectedMonth, selectedDay)
-    const todayString = formatDate(today.year, today.month, today.day)
-
-    if (newDate >= todayString) {
-      setBookingDate(newDate)
-    }
-  }, [selectedDay, selectedMonth, selectedYear])
 
   async function getBookedCourtIds(): Promise<number[]> {
     const { data, error } = await supabase
@@ -110,10 +122,6 @@ export default function Home() {
 
     return data.map((item) => item.court_id)
   }
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   async function findAvailableCourts() {
     setLoading(true)
@@ -397,32 +405,31 @@ export default function Home() {
     return selectedDateTime <= thailandNow
   }
 
-  function isSlotUnavailable(slot: any) {
-  return slot.availableCourts === 0
-}
+  function resetSelection() {
+    setStartTime('')
+    setEndTime('')
+    setCourts([])
+    setSelectedCourtId(null)
+  }
 
-  function areAllTodaySlotsPast() {
-  return timeSlots.every((slot) => isPastTimeSlot(slot.start))
-}
+  function updateSelectedDate(nextYear: number, nextMonth: number, nextDay: number) {
+    const maxDay = getDaysInMonth(nextYear, nextMonth)
+    const clampedDay = Math.min(nextDay, maxDay)
+    const todayString = formatDate(today.year, today.month, today.day)
+    const nextDate = formatDate(nextYear, nextMonth, clampedDay)
 
-// useEffect(() => {
-//   if (bookingDate === getDateString(0) && areAllTodaySlotsPast()) {
+    if (nextDate < todayString) {
+      setSelectedYear(today.year)
+      setSelectedMonth(today.month)
+      setSelectedDay(today.day)
+    } else {
+      setSelectedYear(nextYear)
+      setSelectedMonth(nextMonth)
+      setSelectedDay(clampedDay)
+    }
 
-//     const tomorrow = new Date()
-//     tomorrow.setDate(tomorrow.getDate() + 1)
-
-//     setSelectedDay(tomorrow.getDate())
-//     setSelectedMonth(tomorrow.getMonth() + 1)
-//     setSelectedYear(tomorrow.getFullYear())
-
-//     setBookingDate(getDateString(1))
-
-//     setStartTime('')
-//     setEndTime('')
-//     setCourts([])
-//     setSelectedCourtId(null)
-//   }
-// }, [bookingDate])
+    resetSelection()
+  }
 
   return (
     <>
@@ -519,11 +526,11 @@ export default function Home() {
                   <select
                     value={selectedDay}
                     onChange={(e) => {
-                      setSelectedDay(Number(e.target.value))
-                      setStartTime('')
-                      setEndTime('')
-                      setCourts([])
-                      setSelectedCourtId(null)
+                      updateSelectedDate(
+                        selectedYear,
+                        selectedMonth,
+                        Number(e.target.value)
+                      )
                     }}
                     className="rounded-2xl border border-white/10 bg-neutral-950 p-4 text-white"
                   >
@@ -548,9 +555,11 @@ export default function Home() {
                   <select
                     value={selectedMonth}
                     onChange={(e) => {
-                      setSelectedMonth(Number(e.target.value))
-                      setCourts([])
-                      setSelectedCourtId(null)
+                      updateSelectedDate(
+                        selectedYear,
+                        Number(e.target.value),
+                        selectedDay
+                      )
                     }}
                     className="rounded-2xl border border-white/10 bg-neutral-950 p-4 text-white"
                   >
@@ -572,9 +581,11 @@ export default function Home() {
                   <select
                     value={selectedYear}
                     onChange={(e) => {
-                      setSelectedYear(Number(e.target.value))
-                      setCourts([])
-                      setSelectedCourtId(null)
+                      updateSelectedDate(
+                        Number(e.target.value),
+                        selectedMonth,
+                        selectedDay
+                      )
                     }}
                     className="rounded-2xl border border-white/10 bg-neutral-950 p-4 text-white"
                   >
@@ -615,7 +626,7 @@ export default function Home() {
                       startTime === slot.start && endTime === slot.end
 
                     const isPast = mounted && isPastTimeSlot(slot.start)
-                    const isUnavailable = isSlotUnavailable(slot)
+                    const isUnavailable = false
 
                     return (
                       <button
