@@ -13,6 +13,7 @@ type Customer = {
 type MaybeArray<T> = T | T[]
 
 type BookingItem = {
+  id?: number
   booking_date: string
   start_time: string
   end_time: string
@@ -41,6 +42,21 @@ type BookingFilter = {
   status: string
   search: string
 }
+
+type PendingAction = {
+  bookingCode: string
+  label: string
+  status: string
+  paymentStatus?: string
+  tone: 'green' | 'blue' | 'red'
+} | null
+
+type ToastTone = 'success' | 'error' | 'info'
+
+type ToastState = {
+  message: string
+  tone: ToastTone
+} | null
 
 function getTodayParts() {
   const today = new Date()
@@ -76,6 +92,9 @@ export default function AdminPage() {
   const [filterDay, setFilterDay] = useState(initialToday.day)
   const [filterMonth, setFilterMonth] = useState(initialToday.month)
   const [filterYear, setFilterYear] = useState(initialToday.year)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [toast, setToast] = useState<ToastState>(null)
 
   const currentFilter = useMemo<BookingFilter>(
     () => ({
@@ -99,6 +118,13 @@ export default function AdminPage() {
     [initialToday]
   )
 
+  const showToast = useCallback((message: string, tone: ToastTone = 'info') => {
+    setToast({ message, tone })
+    setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }, [])
+
   const fetchBookings = useCallback(async (filter: BookingFilter) => {
     setLoading(true)
 
@@ -117,6 +143,7 @@ export default function AdminPage() {
           email
         ),
         booking_items (
+          id,
           booking_date,
           start_time,
           end_time,
@@ -131,7 +158,7 @@ export default function AdminPage() {
 
     if (error) {
       console.error(error)
-      alert('Failed to load bookings')
+      showToast('Failed to load bookings', 'error')
       setLoading(false)
       return
     }
@@ -159,7 +186,7 @@ export default function AdminPage() {
 
     setBookings(filteredData)
     setLoading(false)
-  }, [])
+  }, [showToast])
 
   useEffect(() => {
     async function checkAuth() {
@@ -184,6 +211,8 @@ export default function AdminPage() {
     newStatus: string,
     newPaymentStatus?: string
     ) {
+    setUpdatingStatus(true)
+
     const updateData: {
       status: string
       payment_status?: string
@@ -197,24 +226,21 @@ export default function AdminPage() {
 
     const { data: bookingRecord, error: findError } = await supabase
         .from('bookings')
-        .select('id')
+        .select(`
+          id,
+          booking_items (
+            id,
+            price,
+            status
+          )
+        `)
         .eq('booking_code', bookingCode)
         .single()
 
     if (findError) {
         console.error(findError)
-        alert('Booking not found')
-        return
-    }
-
-    const { error: bookingError } = await supabase
-        .from('bookings')
-        .update(updateData)
-        .eq('booking_code', bookingCode)
-
-    if (bookingError) {
-        console.error(bookingError)
-        alert('Update booking failed')
+        showToast('Booking not found', 'error')
+        setUpdatingStatus(false)
         return
     }
 
@@ -227,11 +253,51 @@ export default function AdminPage() {
 
     if (itemError) {
         console.error(itemError)
-        alert('Update booking item failed')
+        showToast('Update booking item failed', 'error')
+        setUpdatingStatus(false)
+        return
+    }
+
+    const bookingItems =
+      (bookingRecord.booking_items || []) as Array<{
+        id: number
+        price: number
+        status: string
+      }>
+
+    const nextItems = bookingItems.map((item) => ({
+      ...item,
+      status: newStatus,
+    }))
+
+    const activeTotal =
+      newStatus === 'cancelled'
+        ? 0
+        : nextItems.reduce(
+            (sum, item) =>
+              item.status === 'cancelled' ? sum : sum + Number(item.price),
+            0
+          )
+
+    const { error: bookingError } = await supabase
+        .from('bookings')
+        .update({
+          ...updateData,
+          total_amount: activeTotal,
+        })
+        .eq('booking_code', bookingCode)
+
+    if (bookingError) {
+        console.error(bookingError)
+        showToast('Update booking failed', 'error')
+        setUpdatingStatus(false)
         return
     }
 
     await fetchBookings(currentFilter)
+    setUpdatingStatus(false)
+    setPendingAction(null)
+    showToast('Booking updated successfully', 'success')
   }
 
 
@@ -278,6 +344,71 @@ export default function AdminPage() {
   
 
   return (
+    <>
+    {toast && (
+      <div
+        className={`fixed top-5 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border bg-neutral-900 px-5 py-4 text-center font-semibold shadow-2xl ${
+          toast.tone === 'success'
+            ? 'border-emerald-500/30 text-emerald-300'
+            : toast.tone === 'error'
+            ? 'border-red-500/30 text-red-300'
+            : 'border-white/10 text-white'
+        }`}
+      >
+        {toast.message}
+      </div>
+    )}
+
+    {pendingAction && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-5">
+        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-6 shadow-2xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            Confirm action
+          </p>
+
+          <h2 className="mt-3 text-3xl font-bold text-white">
+            {pendingAction.label}
+          </h2>
+
+          <p className="mt-3 text-neutral-400">
+            Apply this change to booking {pendingAction.bookingCode} and its booking items?
+          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingAction(null)}
+              disabled={updatingStatus}
+              className="h-12 rounded-2xl border border-white/10 font-bold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Back
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                updateBookingStatus(
+                  pendingAction.bookingCode,
+                  pendingAction.status,
+                  pendingAction.paymentStatus
+                )
+              }
+              disabled={updatingStatus}
+              className={`h-12 rounded-2xl font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                pendingAction.tone === 'green'
+                  ? 'bg-emerald-500 text-black hover:bg-emerald-400'
+                  : pendingAction.tone === 'blue'
+                  ? 'bg-blue-500 text-white hover:bg-blue-400'
+                  : 'bg-red-500 text-white hover:bg-red-400'
+              }`}
+            >
+              {updatingStatus ? 'Updating...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     <main className="min-h-screen bg-neutral-950 p-6 text-white md:p-8">
       <div className="mb-8 flex items-start justify-between gap-4 md:items-center">
         <div className="min-w-0">
@@ -429,6 +560,9 @@ export default function AdminPage() {
           >
             {(() => {
               const customer = firstRelation(booking.customers)
+              const canMarkPaid =
+                booking.payment_status !== 'paid' &&
+                booking.status !== 'cancelled'
 
               return (
                 <>
@@ -470,39 +604,55 @@ export default function AdminPage() {
                 <p className="mb-2 font-bold">Booking details</p>
 
                 {booking.booking_items?.map((item, index) => (
-                  <div key={index} className="mb-3 last:mb-0">
-                    <p>Court: {firstRelation(item.courts)?.name || '-'}</p>
-                    <p>Date: {item.booking_date}</p>
-                    <p>
-                      Time: {item.start_time} - {item.end_time}
-                    </p>
-                    <p>Price: {item.price} THB</p>
-                    <p>
-                    Status:{' '}
-                    <span
+                  <div
+                    key={index}
+                    className="mb-3 grid gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-sm last:mb-0 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                  >
+                    <div>
+                      <p className="text-neutral-500">Court</p>
+                      <p className="font-semibold text-white">
+                        {firstRelation(item.courts)?.name || '-'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-neutral-500">Date</p>
+                      <p className="font-semibold text-white">{item.booking_date}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-neutral-500">Time</p>
+                      <p className="font-semibold text-white">
+                        {item.start_time} - {item.end_time}
+                      </p>
+                    </div>
+
+                    <div className="sm:text-right">
+                      <p className="text-neutral-500">{item.price} THB</p>
+                      <p
                         className={
-                        item.status === 'cancelled'
-                            ? 'text-red-400 font-semibold'
-                            : 'text-emerald-400 font-semibold'
+                          item.status === 'cancelled'
+                            ? 'font-semibold text-red-400'
+                            : 'font-semibold text-emerald-400'
                         }
-                    >
+                      >
                         {item.status}
-                    </span>
-                    </p>
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="mt-4 border-t border-white/10 pt-5">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
                 <div className="space-y-3">
-                  <p className="text-lg font-bold">
+                  <p className="text-xl font-bold">
                     Total: {booking.total_amount} THB
                   </p>
 
                   {booking.slip_url ? (
-                    <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 sm:w-fit sm:min-w-[260px] sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 sm:w-fit sm:min-w-[300px]">
                       <div>
                         <p className="font-bold text-white">Payment Slip</p>
                         <p className="mt-1 text-sm text-neutral-500">
@@ -513,7 +663,7 @@ export default function AdminPage() {
                       <a
                         href={booking.slip_url}
                         target="_blank"
-                        className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 font-bold text-black transition hover:bg-neutral-200"
+                        className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-black transition hover:bg-neutral-200 sm:h-11 sm:px-5 sm:text-base"
                       >
                         View Slip
                       </a>
@@ -525,18 +675,24 @@ export default function AdminPage() {
                   )}
                 </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap lg:justify-end">
-                {booking.payment_status !== 'paid' &&
-                booking.status !== 'cancelled' && (
+              <div className="rounded-2xl border border-white/10 bg-neutral-950 p-3">
+                <p className="mb-3 text-sm font-semibold text-neutral-400 lg:hidden">
+                  Admin actions
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:justify-end">
+                {canMarkPaid && (
                 <button
                     onClick={() =>
-                    updateBookingStatus(
-                        booking.booking_code,
-                        'paid',
-                        'paid'
-                    )
+                      setPendingAction({
+                        bookingCode: booking.booking_code,
+                        label: 'Mark as paid',
+                        status: 'paid',
+                        paymentStatus: 'paid',
+                        tone: 'green',
+                      })
                     }
-                    className="h-11 rounded-xl bg-emerald-500 px-5 font-semibold text-black transition hover:bg-emerald-400 sm:min-w-[150px]"
+                    className="col-span-2 h-11 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-black transition hover:bg-emerald-400 sm:col-span-1 sm:min-w-[150px] sm:px-5 sm:text-base"
                 >
                     Mark as Paid
                 </button>
@@ -544,27 +700,32 @@ export default function AdminPage() {
 
                 <button
                   onClick={() =>
-                    updateBookingStatus(
-                      booking.booking_code,
-                      'completed'
-                    )
+                    setPendingAction({
+                      bookingCode: booking.booking_code,
+                      label: 'Complete booking',
+                      status: 'completed',
+                      tone: 'blue',
+                    })
                   }
-                  className="h-11 rounded-xl bg-blue-500 px-5 font-semibold text-white transition hover:bg-blue-400 sm:min-w-[150px]"
+                  className="h-11 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white transition hover:bg-blue-400 sm:min-w-[150px] sm:px-5 sm:text-base"
                 >
                   Complete
                 </button>
 
                 <button
                   onClick={() =>
-                    updateBookingStatus(
-                      booking.booking_code,
-                      'cancelled'
-                    )
+                    setPendingAction({
+                      bookingCode: booking.booking_code,
+                      label: 'Cancel booking',
+                      status: 'cancelled',
+                      tone: 'red',
+                    })
                   }
-                  className="h-11 rounded-xl bg-red-500 px-5 font-semibold text-white transition hover:bg-red-400 sm:min-w-[150px]"
+                  className="h-11 rounded-xl border border-red-500/50 bg-red-500/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-500 hover:text-white sm:min-w-[150px] sm:px-5 sm:text-base"
                 >
                   Cancel
                 </button>
+              </div>
               </div>
               </div>
             </div>
@@ -581,5 +742,6 @@ export default function AdminPage() {
         )}
       </div>
     </main>
+    </>
   )
 }

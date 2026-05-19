@@ -32,12 +32,23 @@ type CancelBooking = {
   booking_items: CancelBookingItem[] | null
 }
 
+type ToastTone = 'success' | 'error' | 'info'
+
+type ToastState = {
+  message: string
+  tone: ToastTone
+} | null
+
 function firstRelation<T>(relation: MaybeArray<T> | null | undefined) {
   if (Array.isArray(relation)) {
     return relation[0] ?? null
   }
 
   return relation ?? null
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/[^\d+]/g, '')
 }
 
 function canCancelBooking(
@@ -83,6 +94,16 @@ const [showCancelConfirm, setShowCancelConfirm] =
 const [cancelDone, setCancelDone] =
   useState(false)
 
+  const [toast, setToast] =
+    useState<ToastState>(null)
+
+  function showToast(message: string, tone: ToastTone = 'info') {
+    setToast({ message, tone })
+    setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }
+
   async function searchBooking(shouldScroll = true) {
     setLoading(true)
     setBooking(null)
@@ -119,15 +140,15 @@ const [cancelDone, setCancelDone] =
     setLoading(false)
 
     if (error || !bookingData) {
-      alert('Booking not found')
+      showToast('Booking not found', 'error')
       return
     }
 
     const data = bookingData as unknown as CancelBooking
     const customerPhone = firstRelation(data.customers)?.phone
 
-    if (customerPhone !== phone) {
-      alert('Phone number does not match')
+    if (normalizePhone(customerPhone || '') !== normalizePhone(phone)) {
+      showToast('Phone number does not match', 'error')
       return
     }
 
@@ -176,11 +197,11 @@ const [cancelDone, setCancelDone] =
   }
 
   async function cancelSelectedItems() {
-    if (!booking) return
+    if (!booking) return false
 
     if (selectedItems.length === 0) {
-      alert('Please select item(s)')
-      return
+      showToast('Please select item(s)', 'error')
+      return false
     }
 
     // const confirmCancel = confirm(
@@ -200,9 +221,9 @@ const [cancelDone, setCancelDone] =
 
     if (itemError) {
       console.error(itemError)
-      alert('Cancel failed')
+      showToast('Cancel failed', 'error')
       setLoading(false)
-      return
+      return false
     }
 
     const updatedItems =
@@ -245,17 +266,32 @@ const [cancelDone, setCancelDone] =
 
     if (bookingError) {
       console.error(bookingError)
-      alert('Update booking failed')
-      return
+      showToast('Update booking failed', 'error')
+      return false
     }
 
     setCancelSuccess(true)
 
     await searchBooking(false)
+    return true
   }
 
   return (
     <>
+    {toast && (
+        <div
+        className={`fixed top-5 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border bg-neutral-900 px-5 py-4 text-center font-semibold shadow-2xl ${
+            toast.tone === 'success'
+            ? 'border-emerald-500/30 text-emerald-300'
+            : toast.tone === 'error'
+            ? 'border-red-500/30 text-red-300'
+            : 'border-white/10 text-white'
+        }`}
+        >
+        {toast.message}
+        </div>
+    )}
+
     {showCancelConfirm && (
         <div
         id="cancel-confirm-popup"
@@ -279,8 +315,10 @@ const [cancelDone, setCancelDone] =
             <button
                 onClick={async () => {
                 setShowCancelConfirm(false)
-                await cancelSelectedItems()
-                setCancelDone(true)
+                const success = await cancelSelectedItems()
+                if (success) {
+                    setCancelDone(true)
+                }
                 }}
                 className="rounded-2xl bg-red-500 p-4 font-bold text-white"
             >

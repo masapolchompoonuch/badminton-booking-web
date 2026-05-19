@@ -21,6 +21,13 @@ type BookingCartItem = {
   price: number
 }
 
+type ToastTone = 'success' | 'error' | 'info'
+
+type ToastState = {
+  message: string
+  tone: ToastTone
+} | null
+
 const timeSlots = [
   { start: '08:00', end: '09:00' },
   { start: '09:00', end: '10:00' },
@@ -68,6 +75,25 @@ function getServerSnapshot() {
   return false
 }
 
+function scrollToSection(id: string, offset = 24) {
+  window.requestAnimationFrame(() => {
+    const target = document.getElementById(id)
+
+    if (!target) return
+
+    const top = target.getBoundingClientRect().top + window.scrollY - offset
+
+    window.scrollTo({
+      top: Math.max(top, 0),
+      behavior: 'smooth',
+    })
+  })
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/[^\d+]/g, '')
+}
+
 export default function Home() {
   const today = getTodayParts()
 
@@ -95,14 +121,24 @@ export default function Home() {
   )
   const [successMessage, setSuccessMessage] = useState('')
   const [courtMessage, setCourtMessage] = useState('')
+  const [toast, setToast] = useState<ToastState>(null)
   const [latestBookingCode, setLatestBookingCode] = useState('')
   const [slipFile, setSlipFile] = useState<File | null>(null)
   const [uploadingSlip, setUploadingSlip] = useState(false)
   const [slipUploaded, setSlipUploaded] = useState(false)
+  const [submittingBooking, setSubmittingBooking] = useState(false)
+  const [showBookingConfirm, setShowBookingConfirm] = useState(false)
 
   const selectedCourt = courts.find((court) => court.id === selectedCourtId)
   const bookingDate = formatDate(selectedYear, selectedMonth, selectedDay)
   const totalAmount = bookingCart.reduce((sum, item) => sum + Number(item.price), 0)
+
+  function showToast(message: string, tone: ToastTone = 'info') {
+    setToast({ message, tone })
+    setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }
 
   async function getBookedCourtIds(): Promise<number[]> {
     const { data, error } = await supabase
@@ -171,7 +207,7 @@ export default function Home() {
 
   function addBookingToCart() {
     if (!selectedCourt) {
-      alert('Please select a court')
+      showToast('Please select a court', 'error')
       return
     }
 
@@ -184,7 +220,7 @@ export default function Home() {
     )
 
     if (duplicated) {
-      alert('This booking is already in your cart')
+      showToast('This booking is already in your cart', 'error')
       return
     }
 
@@ -201,14 +237,34 @@ export default function Home() {
     ])
 
     setSelectedCourtId(null)
-    setCourts([])
     setShowCustomerForm(false)
+    showToast(`${selectedCourt.name} added to cart`, 'success')
     setTimeout(() => {
-      document.getElementById('booking-cart-section')?.scrollIntoView({
-        behavior: 'auto',
-        block: 'start',
-      })
-    }, 200)
+      scrollToSection('booking-cart-section')
+    }, 50)
+  }
+
+  function addAnotherBooking() {
+    setStartTime('')
+    setEndTime('')
+    setCourts([])
+    setSelectedCourtId(null)
+    setCourtMessage('')
+    setShowCustomerForm(false)
+    scrollToSection('select-time')
+  }
+
+  function continueToCustomerForm() {
+    if (showCustomerForm) {
+      scrollToSection('customer-info')
+      return
+    }
+
+    setShowCustomerForm(true)
+
+    setTimeout(() => {
+      scrollToSection('customer-info')
+    }, 100)
   }
 
   function removeCartItem(index: number) {
@@ -232,7 +288,10 @@ export default function Home() {
       }
 
       if (data && data.length > 0) {
-        alert(`${item.court_name} on ${item.booking_date} ${item.start_time}-${item.end_time} was just booked by someone else.`)
+        showToast(
+          `${item.court_name} on ${item.booking_date} ${item.start_time}-${item.end_time} was just booked by someone else.`,
+          'error'
+        )
         return false
       }
     }
@@ -240,16 +299,24 @@ export default function Home() {
     return true
   }
 
-  async function confirmBooking() {
+  function reviewBooking() {
     if (!fullName || !phone) {
-      alert('Please enter your name and phone number')
+      showToast('Please enter your name and phone number', 'error')
       return
     }
 
     if (bookingCart.length === 0) {
-      alert('Please add at least one booking')
+      showToast('Please add at least one booking', 'error')
       return
     }
+
+    setShowBookingConfirm(true)
+  }
+
+  async function confirmBooking() {
+    if (submittingBooking) return
+
+    setSubmittingBooking(true)
 
     const isAvailable = await checkCartAvailability()
 
@@ -257,16 +324,20 @@ export default function Home() {
       setBookingCart([])
       setCourts([])
       setSelectedCourtId(null)
+      setShowBookingConfirm(false)
+      setSubmittingBooking(false)
       return
     }
 
     try {
+      const normalizedPhone = normalizePhone(phone)
+
       const { data: customerData, error: customerError } = await supabase
         .from('customers')
         .insert([
           {
             full_name: fullName,
-            phone,
+            phone: normalizedPhone,
             email,
             line_id: null,
           },
@@ -276,7 +347,8 @@ export default function Home() {
 
       if (customerError) {
         console.error(customerError)
-        alert('Customer creation failed')
+        showToast('Customer creation failed', 'error')
+        setSubmittingBooking(false)
         return
       }
 
@@ -299,7 +371,8 @@ export default function Home() {
 
       if (bookingError) {
         console.error(bookingError)
-        alert('Booking creation failed')
+        showToast('Booking creation failed', 'error')
+        setSubmittingBooking(false)
         return
       }
 
@@ -319,12 +392,14 @@ export default function Home() {
 
       if (itemError) {
         console.error(itemError)
-        alert('Booking item failed')
+        showToast('Booking item failed', 'error')
+        setSubmittingBooking(false)
         return
       }
 
       setSuccessMessage(`Booking success! Your booking code is ${bookingCode}`)
       setLatestBookingCode(bookingCode)
+      setShowBookingConfirm(false)
 
       setTimeout(() => {
         window.scrollTo({
@@ -342,13 +417,15 @@ export default function Home() {
       setBookingCart([])
     } catch (error) {
       console.error(error)
-      alert('Something went wrong')
+      showToast('Something went wrong', 'error')
+    } finally {
+      setSubmittingBooking(false)
     }
   }
 
   async function uploadPaymentSlip() {
     if (!slipFile || !latestBookingCode) {
-      alert('Please select a slip file')
+      showToast('Please select a slip file', 'error')
       return
     }
 
@@ -362,7 +439,7 @@ export default function Home() {
 
     if (uploadError) {
       console.error(uploadError)
-      alert('Upload slip failed')
+      showToast('Upload slip failed', 'error')
       setUploadingSlip(false)
       return
     }
@@ -382,7 +459,7 @@ export default function Home() {
 
     if (updateError) {
       console.error(updateError)
-      alert('Save slip failed')
+      showToast('Save slip failed', 'error')
       return
     }
     window.scrollTo({
@@ -433,6 +510,102 @@ export default function Home() {
 
   return (
     <>
+      {toast && (
+        <div
+          className={`fixed top-5 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border bg-neutral-900 px-5 py-4 text-center font-semibold shadow-2xl ${
+            toast.tone === 'success'
+              ? 'border-emerald-500/30 text-emerald-300'
+              : toast.tone === 'error'
+              ? 'border-red-500/30 text-red-300'
+              : 'border-white/10 text-white'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
+      {showBookingConfirm && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4">
+          <div className="my-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900 shadow-2xl">
+            <div className="shrink-0 p-6 pb-4">
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">
+                Review booking
+              </p>
+
+              <h2 className="mt-3 text-3xl font-bold text-white">
+                Confirm your booking
+              </h2>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
+              <div className="space-y-3">
+                {bookingCart.map((item, index) => (
+                  <div
+                    key={`${item.court_id}-${item.start_time}-${index}`}
+                    className="rounded-2xl border border-white/10 bg-neutral-950 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-white">{item.court_name}</p>
+                        <p className="text-sm text-neutral-400">
+                          {item.booking_date}
+                        </p>
+                        <p className="text-sm text-neutral-400">
+                          {item.start_time} - {item.end_time}
+                        </p>
+                      </div>
+
+                      <p className="font-bold text-white">{item.price} THB</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 rounded-2xl bg-white/5 p-4">
+                <div className="flex justify-between gap-4">
+                  <span className="text-neutral-400">Customer</span>
+                  <span className="text-right font-semibold text-white">
+                    {fullName}
+                  </span>
+                </div>
+                <div className="mt-2 flex justify-between gap-4">
+                  <span className="text-neutral-400">Phone</span>
+                  <span className="text-right font-semibold text-white">
+                    {normalizePhone(phone)}
+                  </span>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-4 border-t border-white/10 pt-4">
+                  <span className="text-neutral-400">Total</span>
+                  <span className="text-2xl font-bold text-white">
+                    {totalAmount} THB
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-white/10 bg-neutral-900 p-4">
+              <button
+                type="button"
+                onClick={() => setShowBookingConfirm(false)}
+                disabled={submittingBooking}
+                className="h-12 rounded-2xl border border-white/10 font-bold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Back
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmBooking}
+                disabled={submittingBooking}
+                className="h-12 rounded-2xl bg-emerald-500 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submittingBooking ? 'Booking...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {slipUploaded && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
           <div className="w-full max-w-md rounded-3xl border border-emerald-500/30 bg-neutral-900 p-8 text-center shadow-2xl">
@@ -461,7 +634,11 @@ export default function Home() {
         </div>
       )}
 
-      <main className="min-h-screen bg-neutral-950 text-white">
+      <main
+        className={`min-h-screen bg-neutral-950 text-white ${
+          bookingCart.length > 0 ? 'pb-28 lg:pb-0' : ''
+        }`}
+      >
         <section className="mx-auto max-w-6xl px-5 py-10 md:py-16">
           <div className="mb-10 rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-800 p-6 shadow-2xl md:p-10">
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
@@ -508,8 +685,11 @@ export default function Home() {
           )}
 
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-            <section className="space-y-6">
-              <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
+            <section id="booking-selection" className="space-y-6">
+              <div
+                id="select-time"
+                className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
+              >
                 <div className="mb-5 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 font-bold text-black">
                     1
@@ -649,17 +829,17 @@ export default function Home() {
                   })}
                 </div>
 
-                <button
-                  onClick={findAvailableCourts}
-                  disabled={!startTime || !endTime}
-                  className={`mt-5 w-full rounded-2xl p-4 font-bold transition ${
-                    !startTime || !endTime
-                      ? 'cursor-not-allowed border border-white/10 bg-neutral-800 text-neutral-500'
-                      : 'bg-white text-black hover:bg-neutral-200'
-                  }`}
-                >
-                  Search available courts
-                </button>
+	                <button
+	                  onClick={findAvailableCourts}
+	                  disabled={!startTime || !endTime || loading}
+	                  className={`mt-5 w-full rounded-2xl p-4 font-bold transition ${
+	                    !startTime || !endTime || loading
+	                      ? 'cursor-not-allowed border border-white/10 bg-neutral-800 text-neutral-500'
+	                      : 'bg-white text-black hover:bg-neutral-200'
+	                  }`}
+	                >
+	                  {loading ? 'Searching...' : 'Search available courts'}
+	                </button>
                 {courtMessage && (
                   <p className="mt-3 text-sm font-semibold text-red-400">
                     {courtMessage}
@@ -733,7 +913,7 @@ export default function Home() {
             <aside className="space-y-6">
               <div
                 id="booking-cart-section"
-                className="sticky top-6 rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
+                className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6 lg:sticky lg:top-6"
               >
                 <h2 id="booking-cart" className="scroll-mt-6 text-2xl font-bold">
                   Booking cart
@@ -775,24 +955,19 @@ export default function Home() {
                         </button>
                       </div>
                     </div>
-                  ))}
-                  {bookingCart.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.scrollTo({
-                          top: 340,
-                          behavior: 'smooth',
-                        })
-                      }}
-                      className="mt-2 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 font-bold text-emerald-300 transition hover:bg-emerald-500/20"
-                    >
-                      + Add another booking
-                    </button>
-                  )}
-                </div>
+	                  ))}
+	                  {bookingCart.length > 0 && (
+	                    <button
+	                      type="button"
+	                      onClick={addAnotherBooking}
+	                      className="mt-2 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 font-bold text-emerald-300 transition hover:bg-emerald-500/20"
+	                    >
+	                      + Add another booking
+	                    </button>
+	                  )}
+	                </div>
 
-                <div className="mt-5 mb-8 rounded-2xl bg-white/5 p-4">
+	                <div className="mt-5 rounded-2xl bg-white/5 p-4 lg:mb-8">
                   <div className="flex items-center justify-between">
                     <span className="text-neutral-400">Total</span>
                     <span className="text-2xl font-bold">
@@ -802,22 +977,13 @@ export default function Home() {
                 </div>
 
                 {bookingCart.length > 0 && !showCustomerForm && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCustomerForm(true)
-
-                      setTimeout(() => {
-                        document.getElementById('customer-info')?.scrollIntoView({
-                          behavior: 'smooth',
-                          block: 'start',
-                        })
-                      }, 100)
-                    }}
-                    className="w-full rounded-2xl bg-white p-4 font-bold text-black transition hover:bg-neutral-200"
-                  >
-                    Continue
-                  </button>
+	                  <button
+	                    type="button"
+	                    onClick={continueToCustomerForm}
+	                    className="hidden w-full rounded-2xl bg-white p-4 font-bold text-black transition hover:bg-neutral-200 lg:block"
+	                  >
+	                    Continue
+	                  </button>
                 )}
 
                 {bookingCart.length > 0 && showCustomerForm && (
@@ -878,17 +1044,17 @@ export default function Home() {
                       />
                     </div>
 
-                    <button
-                      onClick={confirmBooking}
-                      disabled={!fullName || !phone}
-                      className={`w-full rounded-2xl p-4 font-bold text-black transition ${
-                        !fullName || !phone
-                          ? 'cursor-not-allowed bg-neutral-500'
-                          : 'bg-emerald-500 hover:bg-emerald-400'
-                      }`}
-                    >
-                      Confirm booking
-                    </button>
+	                    <button
+	                      onClick={reviewBooking}
+	                      disabled={!fullName || !phone || submittingBooking}
+	                      className={`w-full rounded-2xl p-4 font-bold text-black transition ${
+	                        !fullName || !phone || submittingBooking
+	                          ? 'cursor-not-allowed bg-neutral-500'
+	                          : 'bg-emerald-500 hover:bg-emerald-400'
+	                      }`}
+	                    >
+	                      Review booking
+	                    </button>
                   </div>
                 )}
                 
@@ -896,6 +1062,33 @@ export default function Home() {
             </aside>
           </div>
         </section>
+
+        {bookingCart.length > 0 && (
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-neutral-950/95 p-4 backdrop-blur lg:hidden">
+            <div className="mx-auto flex max-w-3xl items-center gap-3">
+              <button
+                type="button"
+                onClick={() => scrollToSection('booking-cart-section')}
+                className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-left"
+              >
+                <p className="text-sm text-neutral-400">
+                  {bookingCart.length} booking{bookingCart.length > 1 ? 's' : ''}
+                </p>
+                <p className="truncate text-xl font-bold text-white">
+                  {totalAmount} THB
+                </p>
+              </button>
+
+	              <button
+	                type="button"
+	                onClick={continueToCustomerForm}
+	                className="h-[58px] rounded-2xl bg-white px-5 font-bold text-black"
+	              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </>
   )
