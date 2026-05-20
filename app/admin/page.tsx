@@ -45,6 +45,7 @@ type BookingFilter = {
 
 type PendingAction = {
   bookingCode: string
+  itemId?: number
   label: string
   status: string
   paymentStatus?: string
@@ -80,6 +81,18 @@ function firstRelation<T>(relation: MaybeArray<T> | null | undefined) {
   return relation ?? null
 }
 
+function getScheduleSummary(items: BookingItem[]) {
+  if (items.length === 0) return '-'
+
+  const dates = Array.from(new Set(items.map((item) => item.booking_date))).sort()
+
+  if (dates.length === 1) {
+    return dates[0]
+  }
+
+  return `${dates[0]} - ${dates[dates.length - 1]}`
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const initialToday = useMemo(() => getTodayParts(), [])
@@ -95,6 +108,8 @@ export default function AdminPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [toast, setToast] = useState<ToastState>(null)
+  const [expandedBookings, setExpandedBookings] = useState<string[]>([])
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
 
   const currentFilter = useMemo<BookingFilter>(
     () => ({
@@ -185,6 +200,7 @@ export default function AdminPage() {
     })
 
     setBookings(filteredData)
+    setLastRefreshedAt(new Date())
     setLoading(false)
   }, [showToast])
 
@@ -206,10 +222,40 @@ export default function AdminPage() {
     void Promise.resolve().then(() => fetchBookings(initialFilter))
   }, [fetchBookings, initialFilter])
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void fetchBookings(currentFilter)
+    }, 60000)
+
+    return () => window.clearInterval(interval)
+  }, [fetchBookings, currentFilter])
+
+  const dashboardStats = useMemo(() => {
+    return bookings.reduce(
+      (stats, booking) => {
+        if (booking.status === 'pending') stats.pending += 1
+        if (booking.status === 'paid') stats.paid += 1
+        if (booking.status === 'cancelled') stats.cancelled += 1
+        if (booking.status !== 'cancelled') {
+          stats.revenue += Number(booking.total_amount)
+        }
+
+        return stats
+      },
+      {
+        pending: 0,
+        paid: 0,
+        cancelled: 0,
+        revenue: 0,
+      }
+    )
+  }, [bookings])
+
   async function updateBookingStatus(
     bookingCode: string,
     newStatus: string,
-    newPaymentStatus?: string
+    newPaymentStatus?: string,
+    itemId?: number
     ) {
     setUpdatingStatus(true)
 
@@ -228,6 +274,8 @@ export default function AdminPage() {
         .from('bookings')
         .select(`
           id,
+          status,
+          payment_status,
           booking_items (
             id,
             price,
@@ -244,12 +292,18 @@ export default function AdminPage() {
         return
     }
 
-    const { error: itemError } = await supabase
-        .from('booking_items')
-        .update({
+    let itemUpdateQuery = supabase
+      .from('booking_items')
+      .update({
         status: newStatus,
-        })
-        .eq('booking_id', bookingRecord.id)
+      })
+      .eq('booking_id', bookingRecord.id)
+
+    if (itemId) {
+      itemUpdateQuery = itemUpdateQuery.eq('id', itemId)
+    }
+
+    const { error: itemError } = await itemUpdateQuery
 
     if (itemError) {
         console.error(itemError)
@@ -267,11 +321,21 @@ export default function AdminPage() {
 
     const nextItems = bookingItems.map((item) => ({
       ...item,
-      status: newStatus,
+      status: itemId && item.id !== itemId ? item.status : newStatus,
     }))
 
+    const activeItems = nextItems.filter((item) => item.status !== 'cancelled')
+
+    const nextBookingStatus = itemId
+      ? activeItems.length === 0
+        ? 'cancelled'
+        : activeItems.every((item) => item.status === 'completed')
+        ? 'completed'
+        : bookingRecord.status
+      : newStatus
+
     const activeTotal =
-      newStatus === 'cancelled'
+      activeItems.length === 0
         ? 0
         : nextItems.reduce(
             (sum, item) =>
@@ -283,6 +347,7 @@ export default function AdminPage() {
         .from('bookings')
         .update({
           ...updateData,
+          status: nextBookingStatus,
           total_amount: activeTotal,
         })
         .eq('booking_code', bookingCode)
@@ -341,6 +406,14 @@ export default function AdminPage() {
     return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
   }
 
+  function toggleBookingDetails(bookingCode: string) {
+    setExpandedBookings((prev) =>
+      prev.includes(bookingCode)
+        ? prev.filter((code) => code !== bookingCode)
+        : [...prev, bookingCode]
+    )
+  }
+
   
 
   return (
@@ -371,7 +444,9 @@ export default function AdminPage() {
           </h2>
 
           <p className="mt-3 text-neutral-400">
-            Apply this change to booking {pendingAction.bookingCode} and its booking items?
+            {pendingAction.itemId
+              ? `Apply this change only to the selected slot in booking ${pendingAction.bookingCode}?`
+              : `Apply this change to booking ${pendingAction.bookingCode} and its booking items?`}
           </p>
 
           <div className="mt-6 grid grid-cols-2 gap-3">
@@ -390,7 +465,8 @@ export default function AdminPage() {
                 updateBookingStatus(
                   pendingAction.bookingCode,
                   pendingAction.status,
-                  pendingAction.paymentStatus
+                  pendingAction.paymentStatus,
+                  pendingAction.itemId
                 )
               }
               disabled={updatingStatus}
@@ -431,8 +507,56 @@ export default function AdminPage() {
         </button>
       </div>
 
+      <section className="mb-6 grid grid-cols-2 gap-3 md:mb-8 xl:grid-cols-4">
+        <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
+          <p className="text-xs text-neutral-400 md:text-sm">Pending payment</p>
+          <p className="mt-1 text-2xl font-bold text-yellow-300 md:mt-2 md:text-3xl">
+            {dashboardStats.pending}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
+          <p className="text-xs text-neutral-400 md:text-sm">Paid bookings</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-300 md:mt-2 md:text-3xl">
+            {dashboardStats.paid}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
+          <p className="text-xs text-neutral-400 md:text-sm">Cancelled</p>
+          <p className="mt-1 text-2xl font-bold text-red-300 md:mt-2 md:text-3xl">
+            {dashboardStats.cancelled}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
+          <p className="text-xs text-neutral-400 md:text-sm">Active revenue</p>
+          <p className="mt-1 text-xl font-bold text-white md:mt-2 md:text-3xl">
+            {dashboardStats.revenue} THB
+          </p>
+        </div>
+      </section>
+
       <section className="mb-8 rounded-3xl border border-white/10 bg-neutral-900 p-5">
-        <h2 className="mb-4 text-xl font-bold">Filters</h2>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold">Filters</h2>
+            <p className="mt-1 text-sm text-neutral-500">
+              {lastRefreshedAt
+                ? `Last refreshed ${lastRefreshedAt.toLocaleTimeString()}`
+                : 'Auto refresh every 60 seconds'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => fetchBookings(currentFilter)}
+            disabled={loading}
+            className="h-11 rounded-xl border border-white/10 px-4 font-semibold text-white transition hover:border-emerald-400 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
@@ -560,13 +684,21 @@ export default function AdminPage() {
           >
             {(() => {
               const customer = firstRelation(booking.customers)
+              const items = booking.booking_items || []
+              const scheduleSummary = getScheduleSummary(items)
+              const isExpanded = expandedBookings.includes(booking.booking_code)
               const canMarkPaid =
                 booking.payment_status !== 'paid' &&
                 booking.status !== 'cancelled'
+              const canComplete =
+                booking.status !== 'completed' &&
+                booking.status !== 'cancelled'
+              const canCancel = booking.status !== 'cancelled'
+              const hasActions = canMarkPaid || canComplete || canCancel
 
               return (
                 <>
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-2xl font-bold">
                   {booking.booking_code}
@@ -589,10 +721,53 @@ export default function AdminPage() {
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-semibold">
                   Payment: {booking.payment_status}
                 </span>
+
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <p className="text-neutral-500">Customer</p>
+                  <p className="font-semibold text-white">
+                    {customer?.full_name || '-'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-neutral-500">Items</p>
+                  <p className="font-semibold text-white">
+                    {items.length} slot{items.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-neutral-500">Schedule</p>
+                  <p className="font-semibold text-white">
+                    {scheduleSummary}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-neutral-500">Total</p>
+                  <p className="font-semibold text-white">
+                    {booking.total_amount} THB
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => toggleBookingDetails(booking.booking_code)}
+                className="h-11 rounded-xl border border-white/10 px-5 font-semibold text-white transition hover:border-emerald-400 hover:text-emerald-300"
+              >
+                {isExpanded ? 'Hide details' : 'Details'}
+              </button>
+            </div>
+
+            {isExpanded && (
+              <>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl bg-neutral-950 p-4">
                 <p className="mb-2 font-bold">Customer</p>
                 <p>Name: {customer?.full_name || '-'}</p>
@@ -633,11 +808,33 @@ export default function AdminPage() {
                         className={
                           item.status === 'cancelled'
                             ? 'font-semibold text-red-400'
+                            : item.status === 'completed'
+                            ? 'font-semibold text-blue-400'
                             : 'font-semibold text-emerald-400'
                         }
                       >
                         {item.status}
                       </p>
+
+                      {item.id &&
+                        item.status !== 'completed' &&
+                        item.status !== 'cancelled' && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPendingAction({
+                                bookingCode: booking.booking_code,
+                                itemId: item.id,
+                                label: 'Complete slot',
+                                status: 'completed',
+                                tone: 'blue',
+                              })
+                            }
+                            className="mt-2 h-9 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 text-xs font-bold text-blue-300 transition hover:bg-blue-500 hover:text-white"
+                          >
+                            Complete slot
+                          </button>
+                        )}
                     </div>
                   </div>
                 ))}
@@ -680,6 +877,7 @@ export default function AdminPage() {
                   Admin actions
                 </p>
 
+                {hasActions ? (
                 <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:justify-end">
                 {canMarkPaid && (
                 <button
@@ -698,6 +896,7 @@ export default function AdminPage() {
                 </button>
                 )}
 
+                {canComplete && (
                 <button
                   onClick={() =>
                     setPendingAction({
@@ -711,7 +910,9 @@ export default function AdminPage() {
                 >
                   Complete
                 </button>
+                )}
 
+                {canCancel && (
                 <button
                   onClick={() =>
                     setPendingAction({
@@ -725,10 +926,18 @@ export default function AdminPage() {
                 >
                   Cancel
                 </button>
+                )}
               </div>
+                ) : (
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm font-semibold text-neutral-400">
+                    No actions available for this booking.
+                  </div>
+                )}
               </div>
               </div>
             </div>
+              </>
+            )}
                 </>
               )
             })()}

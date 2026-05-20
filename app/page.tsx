@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { supabase } from '@/lib/supabase'
 
 type Court = {
@@ -27,6 +27,8 @@ type ToastState = {
   message: string
   tone: ToastTone
 } | null
+
+type SlotAvailability = Record<string, number>
 
 const timeSlots = [
   { start: '08:00', end: '09:00' },
@@ -94,6 +96,21 @@ function normalizePhone(value: string) {
   return value.replace(/[^\d+]/g, '')
 }
 
+function getSlotKey(start: string, end: string) {
+  return `${start}-${end}`
+}
+
+function shortTime(value: string) {
+  return value.slice(0, 5)
+}
+
+function createBookingCode(date: string) {
+  const compactDate = date.replaceAll('-', '')
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase()
+
+  return `BK-${compactDate}-${random}`
+}
+
 export default function Home() {
   const today = getTodayParts()
 
@@ -123,11 +140,19 @@ export default function Home() {
   const [courtMessage, setCourtMessage] = useState('')
   const [toast, setToast] = useState<ToastState>(null)
   const [latestBookingCode, setLatestBookingCode] = useState('')
+  const [latestBookingAmount, setLatestBookingAmount] = useState(0)
   const [slipFile, setSlipFile] = useState<File | null>(null)
   const [uploadingSlip, setUploadingSlip] = useState(false)
   const [slipUploaded, setSlipUploaded] = useState(false)
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [showBookingConfirm, setShowBookingConfirm] = useState(false)
+  const [slotAvailability, setSlotAvailability] = useState<SlotAvailability>({})
+  const [loadingSlots, setLoadingSlots] = useState(false)
+  const slipPreviewUrl = useMemo(() => {
+    if (!slipFile || !slipFile.type.startsWith('image/')) return ''
+
+    return URL.createObjectURL(slipFile)
+  }, [slipFile])
 
   const selectedCourt = courts.find((court) => court.id === selectedCourtId)
   const bookingDate = formatDate(selectedYear, selectedMonth, selectedDay)
@@ -139,6 +164,59 @@ export default function Home() {
       setToast(null)
     }, 3000)
   }
+
+  const loadTimeSlotAvailability = useCallback(async () => {
+    setLoadingSlots(true)
+
+    const { data: activeCourts, error: courtError } = await supabase
+      .from('courts')
+      .select('id')
+      .eq('is_active', true)
+
+    if (courtError) {
+      console.error(courtError)
+      setLoadingSlots(false)
+      return
+    }
+
+    const { data: bookedItems, error: bookingError } = await supabase
+      .from('booking_items')
+      .select('start_time, end_time')
+      .eq('booking_date', bookingDate)
+      .in('status', ['pending', 'paid'])
+
+    if (bookingError) {
+      console.error(bookingError)
+      setLoadingSlots(false)
+      return
+    }
+
+    const totalCourts = activeCourts?.length || 0
+    const nextAvailability = timeSlots.reduce<SlotAvailability>((acc, slot) => {
+      const bookedCount =
+        bookedItems?.filter(
+          (item) =>
+            shortTime(item.start_time) < slot.end &&
+            shortTime(item.end_time) > slot.start
+        ).length || 0
+
+      acc[getSlotKey(slot.start, slot.end)] = Math.max(totalCourts - bookedCount, 0)
+      return acc
+    }, {})
+
+    setSlotAvailability(nextAvailability)
+    setLoadingSlots(false)
+  }, [bookingDate])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadTimeSlotAvailability())
+  }, [loadTimeSlotAvailability])
+
+  useEffect(() => {
+    return () => {
+      if (slipPreviewUrl) URL.revokeObjectURL(slipPreviewUrl)
+    }
+  }, [slipPreviewUrl])
 
   async function getBookedCourtIds(): Promise<number[]> {
     const { data, error } = await supabase
@@ -352,7 +430,7 @@ export default function Home() {
         return
       }
 
-      const bookingCode = 'BK-' + Date.now()
+      const bookingCode = createBookingCode(bookingDate)
 
       const { data: bookingData, error: bookingError } = await supabase
         .from('bookings')
@@ -399,13 +477,13 @@ export default function Home() {
 
       setSuccessMessage(`Booking success! Your booking code is ${bookingCode}`)
       setLatestBookingCode(bookingCode)
+      setLatestBookingAmount(totalAmount)
+      setSlipFile(null)
+      setSlipUploaded(false)
       setShowBookingConfirm(false)
 
       setTimeout(() => {
-        window.scrollTo({
-          top: 0,
-          behavior: 'smooth',
-        })
+        scrollToSection('payment-slip-section', 20)
       }, 100)
 
       setFullName('')
@@ -468,6 +546,18 @@ export default function Home() {
     })
 
     setSlipUploaded(true)
+  }
+
+  async function copyBookingCode() {
+    if (!latestBookingCode) return
+
+    try {
+      await navigator.clipboard.writeText(latestBookingCode)
+      showToast('Booking code copied', 'success')
+    } catch (error) {
+      console.error(error)
+      showToast('Copy failed', 'error')
+    }
   }
 
   function isPastTimeSlot(time: string) {
@@ -636,7 +726,9 @@ export default function Home() {
 
       <main
         className={`min-h-screen bg-neutral-950 text-white ${
-          bookingCart.length > 0 ? 'pb-28 lg:pb-0' : ''
+          bookingCart.length > 0 && !showCustomerForm && !showBookingConfirm && !successMessage
+            ? 'pb-28 lg:pb-0'
+            : ''
         }`}
       >
         <section className="mx-auto max-w-6xl px-5 py-10 md:py-16">
@@ -655,31 +747,116 @@ export default function Home() {
           </div>
 
           {successMessage && (
-            <div className="mt-8 mb-8 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5 text-emerald-300">
-              <p className="font-semibold">{successMessage}</p>
+            <div
+              id="payment-slip-section"
+              className="mt-8 mb-8 rounded-3xl border border-emerald-500/30 bg-neutral-900 p-5 md:p-6"
+            >
+              <div>
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">
+                    Booking created
+                  </p>
+                  <h2 className="mt-2 text-3xl font-bold text-white">
+                    Payment slip required
+                  </h2>
+                  <p className="mt-2 text-neutral-400">{successMessage}</p>
+                </div>
+              </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-neutral-950 p-4">
-                <p className="mb-3 font-semibold text-white">
-                  Upload payment slip
-                </p>
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_340px] lg:items-start">
+                <div className="order-1 rounded-2xl border border-white/10 bg-neutral-950 p-4 lg:order-2">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm text-neutral-500">Booking code</p>
+                      <p className="mt-2 truncate text-2xl font-bold text-white md:text-xl">
+                        {latestBookingCode}
+                      </p>
+                    </div>
 
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) setSlipFile(file)
-                  }}
-                  className="mb-4 w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-white"
-                />
+                    <button
+                      type="button"
+                      onClick={copyBookingCode}
+                      aria-label="Copy booking code"
+                      title="Copy booking code"
+                      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 text-lg font-bold text-white transition hover:border-emerald-400 hover:text-emerald-300"
+                    >
+                      ⧉
+                    </button>
+                  </div>
 
-                <button
-                  onClick={uploadPaymentSlip}
-                  disabled={uploadingSlip}
-                  className="rounded-xl bg-white px-5 py-3 font-bold text-black"
-                >
-                  {uploadingSlip ? 'Uploading...' : 'Upload Slip'}
-                </button>
+                  <div className="mt-5 rounded-xl bg-white/5 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-neutral-400">Payment amount</span>
+                      <span className="text-2xl font-bold text-white">
+                        {latestBookingAmount} THB
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="order-2 rounded-2xl border border-white/10 bg-neutral-950 p-4 lg:order-1">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-white">
+                        Upload payment slip
+                      </p>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        JPG, PNG, or PDF accepted
+                      </p>
+                    </div>
+                  </div>
+
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) setSlipFile(file)
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-white"
+                  />
+
+                  {slipFile && (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-neutral-900 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-white">
+                            {slipFile.name}
+                          </p>
+                          <p className="text-sm text-neutral-500">
+                            {(slipFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSlipFile(null)}
+                          className="shrink-0 rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-neutral-300 transition hover:border-red-400 hover:text-red-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      {slipPreviewUrl && (
+                        <div
+                          aria-label="Payment slip preview"
+                          className="mt-3 h-56 w-full rounded-xl bg-contain bg-center bg-no-repeat"
+                          style={{
+                            backgroundImage: `url(${slipPreviewUrl})`,
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={uploadPaymentSlip}
+                    disabled={uploadingSlip}
+                    className="mt-5 h-14 w-full rounded-2xl bg-emerald-500 px-6 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-600"
+                  >
+                    {uploadingSlip ? 'Uploading...' : 'Upload Slip'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -801,12 +978,15 @@ export default function Home() {
                 </div>
 
                 <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {timeSlots.map((slot) => {
+	                  {timeSlots.map((slot) => {
+                    const slotKey = getSlotKey(slot.start, slot.end)
+                    const availableCount = slotAvailability[slotKey]
                     const isSelected =
                       startTime === slot.start && endTime === slot.end
 
                     const isPast = mounted && isPastTimeSlot(slot.start)
-                    const isUnavailable = false
+                    const isUnavailable =
+                      typeof availableCount === 'number' && availableCount === 0
 
                     return (
                       <button
@@ -820,11 +1000,22 @@ export default function Home() {
                             ? 'border-emerald-400 bg-emerald-500 text-black'
                             : 'border-white/10 bg-neutral-950 hover:border-emerald-400'
                         }`}
-                      >
-                        <div className="font-bold">
-                          {slot.start} - {slot.end}
+	                      >
+	                        <div className="font-bold">
+	                          {slot.start} - {slot.end}
+	                        </div>
+                        <div className="mt-2 text-xs opacity-75">
+                          {loadingSlots
+                            ? 'Checking...'
+                            : typeof availableCount === 'number'
+                            ? availableCount > 0
+                              ? `${availableCount} court${
+                                  availableCount === 1 ? '' : 's'
+                                }`
+                              : 'Full'
+                            : 'Availability'}
                         </div>
-                      </button>
+	                      </button>
                     )
                   })}
                 </div>
@@ -1063,7 +1254,7 @@ export default function Home() {
           </div>
         </section>
 
-        {bookingCart.length > 0 && (
+        {bookingCart.length > 0 && !showCustomerForm && !showBookingConfirm && !successMessage && (
           <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-neutral-950/95 p-4 backdrop-blur lg:hidden">
             <div className="mx-auto flex max-w-3xl items-center gap-3">
               <button

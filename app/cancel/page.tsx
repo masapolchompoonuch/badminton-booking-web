@@ -378,7 +378,7 @@ const [cancelDone, setCancelDone] =
           </p>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
+        <div className="mx-auto max-w-4xl rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6">
           <div className="space-y-4">
             <input
               type="text"
@@ -434,40 +434,42 @@ const [cancelDone, setCancelDone] =
         {booking && (
           <div
             id="booking-details"
-            className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
+            className="mx-auto mt-6 max-w-4xl rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6"
             >
-            <div className="mb-6">
-              <h2 className="text-3xl font-bold">
-                Booking Details
-              </h2>
+            <div className="mb-6 flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-3xl font-bold">
+                  Booking Details
+                </h2>
 
-              <p className="mt-3 text-neutral-400">
-                Booking Code:{' '}
-                {booking.booking_code}
-              </p>
+                <p className="mt-3 text-neutral-400">
+                  Booking Code:{' '}
+                  {booking.booking_code}
+                </p>
 
-              <p className="text-neutral-400">
-                Total Amount:{' '}
-                {booking.total_amount} THB
-              </p>
-            </div>
+                <p className="text-neutral-400">
+                  Total Amount:{' '}
+                  {booking.total_amount} THB
+                </p>
+              </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={selectAllItems}
-                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 font-semibold transition hover:bg-white hover:text-black"
-              >
-                Select All
-              </button>
+              <div className="grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-2 md:mt-1 md:flex md:w-fit md:shrink-0 md:items-center">
+                <button
+                  onClick={selectAllItems}
+                  disabled={cancellableItems.length === 0}
+                  className="h-11 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500 hover:text-black disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-neutral-800 disabled:text-neutral-500"
+                >
+                  Select all
+                </button>
 
-              <button
-                onClick={clearSelection}
-                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 font-semibold transition hover:bg-white hover:text-black"
-              >
-                Clear Selection
-              </button>
-
-             
+                <button
+                  onClick={clearSelection}
+                  disabled={selectedItems.length === 0}
+                  className="h-11 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-bold text-white transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 space-y-4">
