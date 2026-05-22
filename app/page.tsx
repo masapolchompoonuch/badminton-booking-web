@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { supabase } from '@/lib/supabase'
+import { LanguageToggle } from './language-toggle'
+import { useI18n } from './language-provider'
 
 type Court = {
   id: number
@@ -112,6 +114,7 @@ function createBookingCode(date: string) {
 }
 
 export default function Home() {
+  const { locale, t } = useI18n()
   const today = getTodayParts()
 
   const [startTime, setStartTime] = useState('')
@@ -266,7 +269,7 @@ export default function Home() {
         }
 
       if ((data || []).length === 0) {
-        setCourtMessage('This time slot has been fully booked.')
+        setCourtMessage(t.booking.slotFullToast)
       } else {
         setCourtMessage('')
       }
@@ -285,7 +288,7 @@ export default function Home() {
 
   function addBookingToCart() {
     if (!selectedCourt) {
-      showToast('Please select a court', 'error')
+      showToast(t.booking.selectCourtToast, 'error')
       return
     }
 
@@ -298,7 +301,7 @@ export default function Home() {
     )
 
     if (duplicated) {
-      showToast('This booking is already in your cart', 'error')
+      showToast(t.booking.duplicateToast, 'error')
       return
     }
 
@@ -316,7 +319,7 @@ export default function Home() {
 
     setSelectedCourtId(null)
     setShowCustomerForm(false)
-    showToast(`${selectedCourt.name} added to cart`, 'success')
+    showToast(t.booking.addedToCartToast(selectedCourt.name), 'success')
     setTimeout(() => {
       scrollToSection('booking-cart-section')
     }, 50)
@@ -367,7 +370,12 @@ export default function Home() {
 
       if (data && data.length > 0) {
         showToast(
-          `${item.court_name} on ${item.booking_date} ${item.start_time}-${item.end_time} was just booked by someone else.`,
+          t.booking.cartConflictToast(
+            item.court_name,
+            item.booking_date,
+            item.start_time,
+            item.end_time
+          ),
           'error'
         )
         return false
@@ -379,12 +387,12 @@ export default function Home() {
 
   function reviewBooking() {
     if (!fullName || !phone) {
-      showToast('Please enter your name and phone number', 'error')
+      showToast(t.booking.missingCustomerToast, 'error')
       return
     }
 
     if (bookingCart.length === 0) {
-      showToast('Please add at least one booking', 'error')
+      showToast(t.booking.emptyCartToast, 'error')
       return
     }
 
@@ -425,7 +433,7 @@ export default function Home() {
 
       if (customerError) {
         console.error(customerError)
-        showToast('Customer creation failed', 'error')
+        showToast(t.booking.customerFailedToast, 'error')
         setSubmittingBooking(false)
         return
       }
@@ -449,7 +457,7 @@ export default function Home() {
 
       if (bookingError) {
         console.error(bookingError)
-        showToast('Booking creation failed', 'error')
+        showToast(t.booking.bookingFailedToast, 'error')
         setSubmittingBooking(false)
         return
       }
@@ -470,12 +478,12 @@ export default function Home() {
 
       if (itemError) {
         console.error(itemError)
-        showToast('Booking item failed', 'error')
+        showToast(t.booking.itemFailedToast, 'error')
         setSubmittingBooking(false)
         return
       }
 
-      setSuccessMessage(`Booking success! Your booking code is ${bookingCode}`)
+      setSuccessMessage(t.booking.successMessage(bookingCode))
       setLatestBookingCode(bookingCode)
       setLatestBookingAmount(totalAmount)
       setSlipFile(null)
@@ -495,7 +503,7 @@ export default function Home() {
       setBookingCart([])
     } catch (error) {
       console.error(error)
-      showToast('Something went wrong', 'error')
+      showToast(t.booking.genericErrorToast, 'error')
     } finally {
       setSubmittingBooking(false)
     }
@@ -503,7 +511,7 @@ export default function Home() {
 
   async function uploadPaymentSlip() {
     if (!slipFile || !latestBookingCode) {
-      showToast('Please select a slip file', 'error')
+      showToast(t.booking.selectSlipToast, 'error')
       return
     }
 
@@ -517,7 +525,7 @@ export default function Home() {
 
     if (uploadError) {
       console.error(uploadError)
-      showToast('Upload slip failed', 'error')
+      showToast(t.booking.uploadFailedToast, 'error')
       setUploadingSlip(false)
       return
     }
@@ -537,7 +545,7 @@ export default function Home() {
 
     if (updateError) {
       console.error(updateError)
-      showToast('Save slip failed', 'error')
+      showToast(t.booking.saveSlipFailedToast, 'error')
       return
     }
     window.scrollTo({
@@ -553,10 +561,10 @@ export default function Home() {
 
     try {
       await navigator.clipboard.writeText(latestBookingCode)
-      showToast('Booking code copied', 'success')
+      showToast(t.common.copied, 'success')
     } catch (error) {
       console.error(error)
-      showToast('Copy failed', 'error')
+      showToast(t.common.copyFailed, 'error')
     }
   }
 
@@ -619,11 +627,11 @@ export default function Home() {
           <div className="my-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900 shadow-2xl">
             <div className="shrink-0 p-6 pb-4">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">
-                Review booking
+                {t.booking.reviewEyebrow}
               </p>
 
               <h2 className="mt-3 text-3xl font-bold text-white">
-                Confirm your booking
+                {t.booking.reviewTitle}
               </h2>
             </div>
 
@@ -645,7 +653,9 @@ export default function Home() {
                         </p>
                       </div>
 
-                      <p className="font-bold text-white">{item.price} THB</p>
+                      <p className="font-bold text-white">
+                        {item.price} {t.common.thb}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -653,21 +663,21 @@ export default function Home() {
 
               <div className="mt-5 rounded-2xl bg-white/5 p-4">
                 <div className="flex justify-between gap-4">
-                  <span className="text-neutral-400">Customer</span>
+                  <span className="text-neutral-400">{t.booking.customer}</span>
                   <span className="text-right font-semibold text-white">
                     {fullName}
                   </span>
                 </div>
                 <div className="mt-2 flex justify-between gap-4">
-                  <span className="text-neutral-400">Phone</span>
+                  <span className="text-neutral-400">{t.common.phone}</span>
                   <span className="text-right font-semibold text-white">
                     {normalizePhone(phone)}
                   </span>
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-4 border-t border-white/10 pt-4">
-                  <span className="text-neutral-400">Total</span>
+                  <span className="text-neutral-400">{t.common.total}</span>
                   <span className="text-2xl font-bold text-white">
-                    {totalAmount} THB
+                    {totalAmount} {t.common.thb}
                   </span>
                 </div>
               </div>
@@ -680,7 +690,7 @@ export default function Home() {
                 disabled={submittingBooking}
                 className="h-12 rounded-2xl border border-white/10 font-bold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Back
+                {t.common.back}
               </button>
 
               <button
@@ -689,7 +699,7 @@ export default function Home() {
                 disabled={submittingBooking}
                 className="h-12 rounded-2xl bg-emerald-500 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submittingBooking ? 'Booking...' : 'Confirm'}
+                {submittingBooking ? t.booking.bookingButton : t.common.confirm}
               </button>
             </div>
           </div>
@@ -704,11 +714,11 @@ export default function Home() {
             </div>
 
             <h2 className="text-3xl font-bold text-white">
-              Uploaded Successfully
+              {t.booking.paymentUploadedTitle}
             </h2>
 
             <p className="mt-3 text-neutral-400">
-              Your payment slip has been uploaded successfully. Our team will verify your payment shortly.
+              {t.booking.paymentUploadedText}
             </p>
 
             <button
@@ -718,7 +728,7 @@ export default function Home() {
               }}
               className="mt-6 w-full rounded-2xl bg-emerald-500 p-4 font-bold text-black transition hover:bg-emerald-400"
             >
-              Finish
+              {t.common.finish}
             </button>
           </div>
         </div>
@@ -732,17 +742,33 @@ export default function Home() {
         }`}
       >
         <section className="mx-auto max-w-6xl px-5 py-10 md:py-16">
-          <div className="mb-10 rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-800 p-6 shadow-2xl md:p-10">
-            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
-              Badminton Court Booking
-            </p>
+          <div className="relative mb-10 rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-800 p-6 shadow-2xl md:p-10">
+            <div className="absolute right-5 top-5 md:hidden">
+              <LanguageToggle />
+            </div>
 
-            <h1 className="max-w-3xl text-4xl font-bold leading-tight md:text-6xl">
-              Book your badminton court online
+            <div className="mb-5 flex items-start justify-between gap-4 md:mb-8">
+              <p className="max-w-[56%] pt-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-400 sm:max-w-none sm:text-sm">
+                {t.booking.eyebrow}
+              </p>
+
+              <div className="hidden md:block">
+                <LanguageToggle />
+              </div>
+            </div>
+
+            <h1
+              className={`max-w-3xl font-bold leading-[1.1] ${
+                locale === 'th'
+                  ? 'mt-12 text-[2.15rem] sm:mt-0 sm:text-5xl md:text-6xl'
+                  : 'text-[2.25rem] sm:text-5xl md:text-[4.25rem]'
+              }`}
+            >
+              {t.booking.title}
             </h1>
 
-            <p className="mt-5 max-w-2xl text-neutral-300">
-              Select your date, time, available court, and add multiple bookings before confirming.
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-neutral-300 md:mt-6 md:text-xl">
+              {t.booking.subtitle}
             </p>
           </div>
 
@@ -754,12 +780,14 @@ export default function Home() {
               <div>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-400">
-                    Booking created
+                    {t.booking.createdEyebrow}
                   </p>
                   <h2 className="mt-2 text-3xl font-bold text-white">
-                    Payment slip required
+                    {t.booking.paymentRequiredTitle}
                   </h2>
-                  <p className="mt-2 text-neutral-400">{successMessage}</p>
+                  <p className="mt-2 text-neutral-400">
+                    {t.booking.successMessage(latestBookingCode)}
+                  </p>
                 </div>
               </div>
 
@@ -767,7 +795,9 @@ export default function Home() {
                 <div className="order-1 rounded-2xl border border-white/10 bg-neutral-950 p-4 lg:order-2">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-sm text-neutral-500">Booking code</p>
+                      <p className="text-sm text-neutral-500">
+                        {t.booking.bookingCode}
+                      </p>
                       <p className="mt-2 truncate text-2xl font-bold text-white md:text-xl">
                         {latestBookingCode}
                       </p>
@@ -786,9 +816,11 @@ export default function Home() {
 
                   <div className="mt-5 rounded-xl bg-white/5 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-neutral-400">Payment amount</span>
+                      <span className="text-neutral-400">
+                        {t.booking.paymentAmount}
+                      </span>
                       <span className="text-2xl font-bold text-white">
-                        {latestBookingAmount} THB
+                        {latestBookingAmount} {t.common.thb}
                       </span>
                     </div>
                   </div>
@@ -798,10 +830,10 @@ export default function Home() {
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <p className="font-semibold text-white">
-                        Upload payment slip
+                        {t.booking.uploadSlipTitle}
                       </p>
                       <p className="mt-1 text-sm text-neutral-500">
-                        JPG, PNG, or PDF accepted
+                        {t.booking.uploadSlipHint}
                       </p>
                     </div>
                   </div>
@@ -833,7 +865,7 @@ export default function Home() {
                           onClick={() => setSlipFile(null)}
                           className="shrink-0 rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-neutral-300 transition hover:border-red-400 hover:text-red-300"
                         >
-                          Remove
+                          {t.common.remove}
                         </button>
                       </div>
 
@@ -854,7 +886,7 @@ export default function Home() {
                     disabled={uploadingSlip}
                     className="mt-5 h-14 w-full rounded-2xl bg-emerald-500 px-6 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-600"
                   >
-                    {uploadingSlip ? 'Uploading...' : 'Upload Slip'}
+                    {uploadingSlip ? t.booking.uploadingSlip : t.booking.uploadSlipButton}
                   </button>
                 </div>
               </div>
@@ -872,9 +904,9 @@ export default function Home() {
                     1
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">Select date</h2>
+                    <h2 className="text-xl font-bold">{t.booking.selectDate}</h2>
                     <p className="text-sm text-neutral-400">
-                      Choose day, month, and year
+                      {t.booking.selectDateHint}
                     </p>
                   </div>
                 </div>
@@ -904,7 +936,7 @@ export default function Home() {
                       })
                       .map((day) => (
                         <option key={day} value={day}>
-                          Day {day}
+                          {t.booking.day} {day}
                         </option>
                       ))}
                   </select>
@@ -930,7 +962,7 @@ export default function Home() {
                       })
                       .map((month) => (
                         <option key={month} value={month}>
-                          Month {month}
+                          {t.booking.month} {month}
                         </option>
                       ))}
                   </select>
@@ -957,7 +989,7 @@ export default function Home() {
                 </div>
 
                 <p className="mt-4 rounded-2xl bg-white/5 p-4 text-sm text-neutral-300">
-                  Selected date:{' '}
+                  {t.booking.selectedDate}:{' '}
                   <span className="font-semibold text-white">
                     {selectedDay}/{selectedMonth}/{selectedYear}
                   </span>
@@ -970,9 +1002,9 @@ export default function Home() {
                     2
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">Select time</h2>
+                    <h2 className="text-xl font-bold">{t.booking.selectTime}</h2>
                     <p className="text-sm text-neutral-400">
-                      Choose your preferred time slot
+                      {t.booking.selectTimeHint}
                     </p>
                   </div>
                 </div>
@@ -1006,14 +1038,12 @@ export default function Home() {
 	                        </div>
                         <div className="mt-2 text-xs opacity-75">
                           {loadingSlots
-                            ? 'Checking...'
+                            ? t.booking.checking
                             : typeof availableCount === 'number'
                             ? availableCount > 0
-                              ? `${availableCount} court${
-                                  availableCount === 1 ? '' : 's'
-                                }`
-                              : 'Full'
-                            : 'Availability'}
+                              ? t.booking.courtCount(availableCount)
+                              : t.booking.full
+                            : t.booking.availability}
                         </div>
 	                      </button>
                     )
@@ -1029,7 +1059,7 @@ export default function Home() {
 	                      : 'bg-white text-black hover:bg-neutral-200'
 	                  }`}
 	                >
-	                  {loading ? 'Searching...' : 'Search available courts'}
+	                  {loading ? t.booking.searching : t.booking.searchCourts}
 	                </button>
                 {courtMessage && (
                   <p className="mt-3 text-sm font-semibold text-red-400">
@@ -1047,16 +1077,18 @@ export default function Home() {
                     3
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">Available courts</h2>
+                    <h2 className="text-xl font-bold">
+                      {t.booking.availableCourts}
+                    </h2>
                     <p className="text-sm text-neutral-400">
-                      Available courts: {courts.length}
+                      {t.booking.availableCourtsCount(courts.length)}
                     </p>
                   </div>
                 </div>
 
                 {courts.length === 0 && !loading && (
                   <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-neutral-400">
-                    Select date and time, then search available courts.
+                    {t.booking.emptyCourts}
                   </div>
                 )}
 
@@ -1079,12 +1111,12 @@ export default function Home() {
                           </p>
                         </div>
                         <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-black">
-                          Available
+                          {t.booking.available}
                         </span>
                       </div>
 
                       <p className="mt-4 font-semibold">
-                        {court.hourly_rate} THB / hour
+                        {court.hourly_rate} {t.common.thb} / {t.common.hour}
                       </p>
                     </button>
                   ))}
@@ -1095,7 +1127,7 @@ export default function Home() {
                     onClick={addBookingToCart}
                     className="mt-5 w-full rounded-2xl bg-emerald-500 p-4 font-bold text-black transition hover:bg-emerald-400"
                   >
-                    Add Booking
+                    {t.booking.addBooking}
                   </button>
                 )}
               </div>
@@ -1107,13 +1139,13 @@ export default function Home() {
                 className="rounded-3xl border border-white/10 bg-neutral-900 p-5 md:p-6 lg:sticky lg:top-6"
               >
                 <h2 id="booking-cart" className="scroll-mt-6 text-2xl font-bold">
-                  Booking cart
+                  {t.booking.cartTitle}
                 </h2>
 
                 <div className="mt-5 space-y-3">
                   {bookingCart.length === 0 && (
                     <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center text-neutral-400">
-                      No booking added yet.
+                      {t.booking.emptyCart}
                     </div>
                   )}
 
@@ -1134,7 +1166,7 @@ export default function Home() {
                             {item.start_time} - {item.end_time}
                           </p>
                           <p className="mt-2 font-semibold">
-                            {item.price} THB
+                            {item.price} {t.common.thb}
                           </p>
                         </div>
 
@@ -1142,7 +1174,7 @@ export default function Home() {
                           onClick={() => removeCartItem(index)}
                           className="rounded-xl bg-red-500 px-3 py-2 text-sm font-bold text-white"
                         >
-                          Remove
+                          {t.common.remove}
                         </button>
                       </div>
                     </div>
@@ -1153,16 +1185,16 @@ export default function Home() {
 	                      onClick={addAnotherBooking}
 	                      className="mt-2 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 font-bold text-emerald-300 transition hover:bg-emerald-500/20"
 	                    >
-	                      + Add another booking
+	                      {t.booking.addAnother}
 	                    </button>
 	                  )}
 	                </div>
 
 	                <div className="mt-5 rounded-2xl bg-white/5 p-4 lg:mb-8">
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400">Total</span>
+                    <span className="text-neutral-400">{t.common.total}</span>
                     <span className="text-2xl font-bold">
-                      {totalAmount} THB
+                      {totalAmount} {t.common.thb}
                     </span>
                   </div>
                 </div>
@@ -1173,7 +1205,7 @@ export default function Home() {
 	                    onClick={continueToCustomerForm}
 	                    className="hidden w-full rounded-2xl bg-white p-4 font-bold text-black transition hover:bg-neutral-200 lg:block"
 	                  >
-	                    Continue
+	                    {t.booking.continue}
 	                  </button>
                 )}
 
@@ -1182,15 +1214,15 @@ export default function Home() {
                     id="customer-info"
                     className="mt-6 space-y-4 rounded-2xl border border-white/10 bg-neutral-950 p-4"
                   >
-                    <h3 className="text-xl font-bold">Your information</h3>
+                    <h3 className="text-xl font-bold">{t.booking.infoTitle}</h3>
 
                     <div>
                       <label className="mb-2 block text-sm text-neutral-400">
-                        Full name *
+                        {t.booking.fullName}
                       </label>
                       <input
                         type="text"
-                        placeholder="Your full name"
+                        placeholder={t.booking.fullNamePlaceholder}
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         className="w-full rounded-2xl border border-white/10 bg-neutral-900 p-4"
@@ -1199,7 +1231,7 @@ export default function Home() {
 
                     <div>
                       <label className="mb-2 block text-sm text-neutral-400">
-                        Phone number *
+                        {t.booking.phoneNumber}
                       </label>
                       <input
                         type="text"
@@ -1212,7 +1244,7 @@ export default function Home() {
 
                     <div>
                       <label className="mb-2 block text-sm text-neutral-400">
-                        Email
+                        {t.common.email}
                       </label>
                       <input
                         type="email"
@@ -1225,10 +1257,10 @@ export default function Home() {
 
                     <div>
                       <label className="mb-2 block text-sm text-neutral-400">
-                        Note
+                        {t.booking.note}
                       </label>
                       <textarea
-                        placeholder="Optional"
+                        placeholder={t.booking.optional}
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         className="min-h-24 w-full rounded-2xl border border-white/10 bg-neutral-900 p-4"
@@ -1244,7 +1276,7 @@ export default function Home() {
 	                          : 'bg-emerald-500 hover:bg-emerald-400'
 	                      }`}
 	                    >
-	                      Review booking
+	                      {t.booking.reviewButton}
 	                    </button>
                   </div>
                 )}
@@ -1263,10 +1295,10 @@ export default function Home() {
                 className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-left"
               >
                 <p className="text-sm text-neutral-400">
-                  {bookingCart.length} booking{bookingCart.length > 1 ? 's' : ''}
+                  {t.booking.mobileBookingCount(bookingCart.length)}
                 </p>
                 <p className="truncate text-xl font-bold text-white">
-                  {totalAmount} THB
+                  {totalAmount} {t.common.thb}
                 </p>
               </button>
 
@@ -1275,7 +1307,7 @@ export default function Home() {
 	                onClick={continueToCustomerForm}
 	                className="h-[58px] rounded-2xl bg-white px-5 font-bold text-black"
 	              >
-                Continue
+                {t.booking.continue}
               </button>
             </div>
           </div>

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { LanguageToggle } from '../language-toggle'
+import { useI18n } from '../language-provider'
 
 type MaybeArray<T> = T | T[]
 
@@ -71,6 +73,8 @@ function canCancelBooking(
 }
 
 export default function CancelPage() {
+  const { t } = useI18n()
+
   const [bookingCode, setBookingCode] =
     useState('')
 
@@ -140,7 +144,7 @@ const [cancelDone, setCancelDone] =
     setLoading(false)
 
     if (error || !bookingData) {
-      showToast('Booking not found', 'error')
+      showToast(t.cancel.notFoundToast, 'error')
       return
     }
 
@@ -148,7 +152,7 @@ const [cancelDone, setCancelDone] =
     const customerPhone = firstRelation(data.customers)?.phone
 
     if (normalizePhone(customerPhone || '') !== normalizePhone(phone)) {
-      showToast('Phone number does not match', 'error')
+      showToast(t.cancel.phoneMismatchToast, 'error')
       return
     }
 
@@ -200,7 +204,7 @@ const [cancelDone, setCancelDone] =
     if (!booking) return false
 
     if (selectedItems.length === 0) {
-      showToast('Please select item(s)', 'error')
+      showToast(t.cancel.selectItemsToast, 'error')
       return false
     }
 
@@ -221,7 +225,7 @@ const [cancelDone, setCancelDone] =
 
     if (itemError) {
       console.error(itemError)
-      showToast('Cancel failed', 'error')
+      showToast(t.cancel.cancelFailedToast, 'error')
       setLoading(false)
       return false
     }
@@ -266,7 +270,7 @@ const [cancelDone, setCancelDone] =
 
     if (bookingError) {
       console.error(bookingError)
-      showToast('Update booking failed', 'error')
+      showToast(t.cancel.updateFailedToast, 'error')
       return false
     }
 
@@ -298,10 +302,12 @@ const [cancelDone, setCancelDone] =
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
         >
         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-8 text-center shadow-2xl">
-            <h2 className="text-3xl font-bold text-white">Are you sure?</h2>
+            <h2 className="text-3xl font-bold text-white">
+              {t.cancel.confirmTitle}
+            </h2>
 
             <p className="mt-4 mb-8 text-neutral-400">
-            Do you want to cancel the selected booking?
+              {t.cancel.confirmText}
             </p>
 
             <div className="mt-8 grid grid-cols-2 gap-3">
@@ -309,7 +315,7 @@ const [cancelDone, setCancelDone] =
                 onClick={() => setShowCancelConfirm(false)}
                 className="rounded-2xl border border-white/10 p-4 font-bold text-white"
             >
-                No
+                {t.cancel.no}
             </button>
 
             <button
@@ -322,7 +328,7 @@ const [cancelDone, setCancelDone] =
                 }}
                 className="rounded-2xl bg-red-500 p-4 font-bold text-white"
             >
-                Yes
+                {t.cancel.yes}
             </button>
             </div>
         </div>
@@ -336,10 +342,12 @@ const [cancelDone, setCancelDone] =
             ✓
             </div>
 
-            <h2 className="text-3xl font-bold text-white">Booking cancelled</h2>
+            <h2 className="text-3xl font-bold text-white">
+              {t.cancel.doneTitle}
+            </h2>
 
             <p className="mt-4 mb-8 text-neutral-400">
-            Your booking has been cancelled successfully.
+              {t.cancel.doneText}
             </p>
 
             <button
@@ -355,7 +363,7 @@ const [cancelDone, setCancelDone] =
                 }}
             className="mt-8 w-full rounded-2xl bg-emerald-500 p-4 font-bold text-black"
             >
-            Finish
+            {t.common.finish}
             </button>
         </div>
         </div>
@@ -363,18 +371,20 @@ const [cancelDone, setCancelDone] =
     <main className="min-h-screen bg-neutral-950 text-white">
       <section className="mx-auto max-w-6xl px-5 py-10 md:py-16">
         <div className="mx-auto mb-10 max-w-4xl rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-950 p-8 md:p-10">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.25em] text-red-400">
-            Booking Management
-          </p>
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <p className="pt-1 text-sm font-semibold uppercase tracking-[0.25em] text-red-400">
+              {t.cancel.eyebrow}
+            </p>
+
+            <LanguageToggle />
+          </div>
 
           <h1 className="text-4xl font-bold leading-tight md:text-6xl">
-            Cancel Your Booking
+            {t.cancel.title}
           </h1>
 
           <p className="mt-5 max-w-2xl text-neutral-400">
-            Search your booking and
-            select the item(s) you want
-            to cancel.
+            {t.cancel.subtitle}
           </p>
         </div>
 
@@ -382,7 +392,7 @@ const [cancelDone, setCancelDone] =
           <div className="space-y-4">
             <input
               type="text"
-              placeholder="Booking code"
+              placeholder={t.cancel.bookingCodePlaceholder}
               value={bookingCode}
               onChange={(e) =>
                 setBookingCode(
@@ -394,7 +404,7 @@ const [cancelDone, setCancelDone] =
 
             <input
               type="text"
-              placeholder="Phone number"
+              placeholder={t.cancel.phonePlaceholder}
               value={phone}
               onChange={(e) =>
                 setPhone(e.target.value)
@@ -412,8 +422,8 @@ const [cancelDone, setCancelDone] =
               className="w-full rounded-2xl bg-white p-4 font-bold text-black transition hover:scale-[1.01] hover:bg-neutral-200 disabled:cursor-not-allowed disabled:bg-neutral-600"
             >
               {loading
-                ? 'Loading...'
-                : 'Search Booking'}
+                ? t.common.loading
+                : t.cancel.searchButton}
             </button>
           </div>
         </div>
@@ -421,12 +431,11 @@ const [cancelDone, setCancelDone] =
         {cancelSuccess && (
           <div className="mt-6 rounded-3xl border border-red-500/30 bg-red-500/10 p-6">
             <h2 className="text-2xl font-bold text-red-300">
-              Booking Cancelled Successfully
+              {t.cancel.cancelledSuccessTitle}
             </h2>
 
             <p className="mt-2 text-neutral-300">
-              Selected booking item(s)
-              have been cancelled.
+              {t.cancel.cancelledSuccessText}
             </p>
           </div>
         )}
@@ -439,17 +448,17 @@ const [cancelDone, setCancelDone] =
             <div className="mb-6 flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-3xl font-bold">
-                  Booking Details
+                  {t.cancel.detailsTitle}
                 </h2>
 
                 <p className="mt-3 text-neutral-400">
-                  Booking Code:{' '}
+                  {t.cancel.bookingCode}:{' '}
                   {booking.booking_code}
                 </p>
 
                 <p className="text-neutral-400">
-                  Total Amount:{' '}
-                  {booking.total_amount} THB
+                  {t.cancel.totalAmount}:{' '}
+                  {booking.total_amount} {t.common.thb}
                 </p>
               </div>
 
@@ -459,7 +468,7 @@ const [cancelDone, setCancelDone] =
                   disabled={cancellableItems.length === 0}
                   className="h-11 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500 hover:text-black disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-neutral-800 disabled:text-neutral-500"
                 >
-                  Select all
+                  {t.cancel.selectAll}
                 </button>
 
                 <button
@@ -467,7 +476,7 @@ const [cancelDone, setCancelDone] =
                   disabled={selectedItems.length === 0}
                   className="h-11 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-bold text-white transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
                 >
-                  Clear
+                  {t.common.clear}
                 </button>
               </div>
             </div>
@@ -518,24 +527,24 @@ const [cancelDone, setCancelDone] =
 
                             {item.status === 'cancelled' ? (
                                 <p className="text-sm font-bold text-neutral-400">
-                                Cancelled
+                                {t.cancel.cancelled}
                                 </p>
                             ) : !canCancel ? (
                                 <p className="text-sm font-bold text-red-400">
-                                Cannot Cancel
+                                {t.cancel.cannotCancel}
                                 </p>
                             ) : null}
                             </div>
 
                           <p className="text-neutral-400">
-                            Date:{' '}
+                            {t.common.date}:{' '}
                             {
                               item.booking_date
                             }
                           </p>
 
                           <p className="text-neutral-400">
-                            Time:{' '}
+                            {t.common.time}:{' '}
                             {
                               item.start_time
                             }{' '}
@@ -544,17 +553,17 @@ const [cancelDone, setCancelDone] =
                           </p>
 
                           <p className="mt-3 text-xl font-bold">
-                            {item.price} THB
+                            {item.price} {t.common.thb}
                           </p>
 
                           <div className="mt-3 flex items-center justify-between gap-4">
                             {item.status === 'cancelled' ? (
                                 <span className="text-sm font-semibold text-red-300">
-                                Cancelled
+                                {t.cancel.cancelled}
                                 </span>
                             ) : (
                                 <span className="text-sm font-semibold text-emerald-300">
-                                Active
+                                {t.cancel.active}
                                 </span>
                             )}
 
@@ -565,10 +574,7 @@ const [cancelDone, setCancelDone] =
                             item.status !==
                               'cancelled' && (
                               <p className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-300">
-                                Cannot cancel
-                                within 2 hours
-                                before booking
-                                time.
+                                {t.cancel.cannotCancelHint}
                               </p>
                             )}
                         </div>
@@ -599,7 +605,7 @@ const [cancelDone, setCancelDone] =
                         : 'bg-red-500 text-white hover:scale-[1.03] hover:bg-red-600'
                     }`}
                 >
-                Cancel Selected
+                {t.cancel.cancelSelected}
                 </button>
             </div>
           </div>

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { LanguageToggle } from '../language-toggle'
+import { useI18n } from '../language-provider'
 
 type Customer = {
   full_name: string | null
@@ -94,6 +96,7 @@ function getScheduleSummary(items: BookingItem[]) {
 }
 
 export default function AdminPage() {
+  const { locale, t } = useI18n()
   const router = useRouter()
   const initialToday = useMemo(() => getTodayParts(), [])
 
@@ -173,7 +176,7 @@ export default function AdminPage() {
 
     if (error) {
       console.error(error)
-      showToast('Failed to load bookings', 'error')
+      showToast(t.admin.loadFailed, 'error')
       setLoading(false)
       return
     }
@@ -202,7 +205,7 @@ export default function AdminPage() {
     setBookings(filteredData)
     setLastRefreshedAt(new Date())
     setLoading(false)
-  }, [showToast])
+  }, [showToast, t.admin.loadFailed])
 
   useEffect(() => {
     async function checkAuth() {
@@ -287,7 +290,7 @@ export default function AdminPage() {
 
     if (findError) {
         console.error(findError)
-        showToast('Booking not found', 'error')
+        showToast(t.admin.bookingNotFound, 'error')
         setUpdatingStatus(false)
         return
     }
@@ -307,7 +310,7 @@ export default function AdminPage() {
 
     if (itemError) {
         console.error(itemError)
-        showToast('Update booking item failed', 'error')
+        showToast(t.admin.itemUpdateFailed, 'error')
         setUpdatingStatus(false)
         return
     }
@@ -354,7 +357,7 @@ export default function AdminPage() {
 
     if (bookingError) {
         console.error(bookingError)
-        showToast('Update booking failed', 'error')
+        showToast(t.admin.bookingUpdateFailed, 'error')
         setUpdatingStatus(false)
         return
     }
@@ -362,7 +365,7 @@ export default function AdminPage() {
     await fetchBookings(currentFilter)
     setUpdatingStatus(false)
     setPendingAction(null)
-    showToast('Booking updated successfully', 'success')
+    showToast(t.admin.bookingUpdated, 'success')
   }
 
 
@@ -406,6 +409,18 @@ export default function AdminPage() {
     return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
   }
 
+  function getStatusLabel(status: string) {
+    if (status === 'paid') return t.admin.statusPaid
+    if (status === 'completed') return t.admin.statusCompleted
+    if (status === 'cancelled') return t.admin.statusCancelled
+    return t.admin.statusPending
+  }
+
+  function getPaymentStatusLabel(status: string) {
+    if (status === 'paid') return t.admin.paymentPaid
+    return t.admin.paymentUnpaid
+  }
+
   function toggleBookingDetails(bookingCode: string) {
     setExpandedBookings((prev) =>
       prev.includes(bookingCode)
@@ -436,7 +451,7 @@ export default function AdminPage() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-5">
         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-900 p-6 shadow-2xl">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">
-            Confirm action
+            {t.admin.confirmAction}
           </p>
 
           <h2 className="mt-3 text-3xl font-bold text-white">
@@ -445,8 +460,8 @@ export default function AdminPage() {
 
           <p className="mt-3 text-neutral-400">
             {pendingAction.itemId
-              ? `Apply this change only to the selected slot in booking ${pendingAction.bookingCode}?`
-              : `Apply this change to booking ${pendingAction.bookingCode} and its booking items?`}
+              ? t.admin.confirmSlotAction(pendingAction.bookingCode)
+              : t.admin.confirmBookingAction(pendingAction.bookingCode)}
           </p>
 
           <div className="mt-6 grid grid-cols-2 gap-3">
@@ -456,7 +471,7 @@ export default function AdminPage() {
               disabled={updatingStatus}
               className="h-12 rounded-2xl border border-white/10 font-bold text-white transition hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Back
+              {t.common.back}
             </button>
 
             <button
@@ -478,7 +493,7 @@ export default function AdminPage() {
                   : 'bg-red-500 text-white hover:bg-red-400'
               }`}
             >
-              {updatingStatus ? 'Updating...' : 'Confirm'}
+              {updatingStatus ? t.admin.updating : t.common.confirm}
             </button>
           </div>
         </div>
@@ -490,49 +505,67 @@ export default function AdminPage() {
         <div className="min-w-0">
           <div className="mb-2">
             <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
-              Court Management
+              {t.admin.eyebrow}
             </p>
           </div>
 
-          <h1 className="text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
-            Admin Dashboard
+          <h1
+            className={`font-bold leading-tight md:text-5xl ${
+              locale === 'th'
+                ? 'text-[2rem] sm:text-4xl'
+                : 'max-w-[180px] text-3xl sm:max-w-none sm:text-4xl'
+            }`}
+          >
+            {locale === 'th' ? (
+              <>
+                <span className="block whitespace-nowrap md:hidden">แดชบอร์ด</span>
+                <span className="block whitespace-nowrap md:hidden">แอดมิน</span>
+                <span className="hidden whitespace-nowrap md:inline">แดชบอร์ดแอดมิน</span>
+              </>
+            ) : (
+              t.admin.title
+            )}
           </h1>
         </div>
 
-        <button
-          onClick={handleLogout}
-          className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-red-500 px-5 text-sm font-semibold text-white transition hover:bg-red-400 md:h-14 md:w-[220px] md:rounded-2xl md:text-base"
-        >
-          Logout
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-3 sm:flex-row sm:items-center">
+          <LanguageToggle />
+
+          <button
+            onClick={handleLogout}
+            className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-red-500 px-5 text-sm font-semibold text-white transition hover:bg-red-400 md:h-14 md:w-[220px] md:rounded-2xl md:text-base"
+          >
+            {t.admin.logout}
+          </button>
+        </div>
       </div>
 
       <section className="mb-6 grid grid-cols-2 gap-3 md:mb-8 xl:grid-cols-4">
         <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
-          <p className="text-xs text-neutral-400 md:text-sm">Pending payment</p>
+          <p className="text-xs text-neutral-400 md:text-sm">{t.admin.pendingPayment}</p>
           <p className="mt-1 text-2xl font-bold text-yellow-300 md:mt-2 md:text-3xl">
             {dashboardStats.pending}
           </p>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
-          <p className="text-xs text-neutral-400 md:text-sm">Paid bookings</p>
+          <p className="text-xs text-neutral-400 md:text-sm">{t.admin.paidBookings}</p>
           <p className="mt-1 text-2xl font-bold text-emerald-300 md:mt-2 md:text-3xl">
             {dashboardStats.paid}
           </p>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
-          <p className="text-xs text-neutral-400 md:text-sm">Cancelled</p>
+          <p className="text-xs text-neutral-400 md:text-sm">{t.admin.cancelled}</p>
           <p className="mt-1 text-2xl font-bold text-red-300 md:mt-2 md:text-3xl">
             {dashboardStats.cancelled}
           </p>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 md:rounded-2xl md:p-4">
-          <p className="text-xs text-neutral-400 md:text-sm">Active revenue</p>
+          <p className="text-xs text-neutral-400 md:text-sm">{t.admin.activeRevenue}</p>
           <p className="mt-1 text-xl font-bold text-white md:mt-2 md:text-3xl">
-            {dashboardStats.revenue} THB
+            {dashboardStats.revenue} {t.common.thb}
           </p>
         </div>
       </section>
@@ -540,11 +573,11 @@ export default function AdminPage() {
       <section className="mb-8 rounded-3xl border border-white/10 bg-neutral-900 p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-xl font-bold">Filters</h2>
+            <h2 className="text-xl font-bold">{t.admin.filters}</h2>
             <p className="mt-1 text-sm text-neutral-500">
               {lastRefreshedAt
-                ? `Last refreshed ${lastRefreshedAt.toLocaleTimeString()}`
-                : 'Auto refresh every 60 seconds'}
+                ? t.admin.lastRefreshed(lastRefreshedAt.toLocaleTimeString())
+                : t.admin.autoRefresh}
             </p>
           </div>
 
@@ -554,13 +587,13 @@ export default function AdminPage() {
             disabled={loading}
             className="h-11 rounded-xl border border-white/10 px-4 font-semibold text-white transition hover:border-emerald-400 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? 'Refreshing...' : 'Refresh'}
+            {loading ? t.admin.refreshing : t.admin.refresh}
           </button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
-              Showing bookings
+              {t.admin.showingBookings}
             </label>
 
             <div className="flex h-[58px] w-full items-center rounded-2xl border border-white/10 bg-neutral-950 px-4">
@@ -572,7 +605,7 @@ export default function AdminPage() {
 
           <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
-              Filter by date
+              {t.admin.filterByDate}
             </label>
 
             <div className="grid grid-cols-3 gap-2">
@@ -616,7 +649,7 @@ export default function AdminPage() {
 
           <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
-              Filter by status
+              {t.admin.filterByStatus}
             </label>
 
             <select
@@ -624,22 +657,22 @@ export default function AdminPage() {
               onChange={(e) => setFilterStatus(e.target.value)}
               className="h-[58px] w-full rounded-2xl border border-white/10 bg-neutral-950 px-4"
             >
-              <option value="">All status</option>
-              <option value="pending">Pending</option>
-              <option value="paid">Paid</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="">{t.admin.allStatus}</option>
+              <option value="pending">{t.admin.statusPending}</option>
+              <option value="paid">{t.admin.statusPaid}</option>
+              <option value="completed">{t.admin.statusCompleted}</option>
+              <option value="cancelled">{t.admin.statusCancelled}</option>
             </select>
           </div>
 
           <div className="min-w-0">
             <label className="mb-2 block text-sm text-neutral-400">
-              Search booking / phone / name
+              {t.admin.searchLabel}
             </label>
 
             <input
               type="text"
-              placeholder="BK-... / phone / name"
+              placeholder={t.admin.searchPlaceholder}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               className="h-[58px] w-full rounded-2xl border border-white/10 bg-neutral-950 px-4"
@@ -648,7 +681,7 @@ export default function AdminPage() {
 
           <div className="min-w-0">
             <span className="mb-2 block text-sm text-transparent">
-              Actions
+              {t.admin.actions}
             </span>
 
             <div className="flex gap-3">
@@ -656,14 +689,14 @@ export default function AdminPage() {
               onClick={() => fetchBookings(currentFilter)}
               className="h-[58px] flex-1 rounded-2xl bg-white px-4 font-bold text-black transition hover:bg-neutral-200"
             >
-              Apply
+              {t.admin.apply}
             </button>
 
             <button
               onClick={clearFilters}
               className="h-[58px] flex-1 rounded-2xl border border-white/10 px-4 font-bold transition hover:border-red-400 hover:text-red-400"
             >
-              Clear
+              {t.admin.clear}
             </button>
             </div>
           </div>
@@ -672,7 +705,7 @@ export default function AdminPage() {
 
       {loading && (
         <div className="mb-6 rounded-2xl border border-white/10 bg-neutral-900 p-4 text-neutral-300">
-          Loading bookings...
+          {t.admin.loadingBookings}
         </div>
       )}
 
@@ -705,7 +738,7 @@ export default function AdminPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-neutral-400">
-                  Created at: {new Date(booking.created_at).toLocaleString()}
+                  {t.admin.createdAt}: {new Date(booking.created_at).toLocaleString()}
                 </p>
               </div>
 
@@ -715,11 +748,11 @@ export default function AdminPage() {
                     booking.status
                   )}`}
                 >
-                  {booking.status}
+                  {getStatusLabel(booking.status)}
                 </span>
 
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-semibold">
-                  Payment: {booking.payment_status}
+                  {t.admin.payment}: {getPaymentStatusLabel(booking.payment_status)}
                 </span>
 
               </div>
@@ -728,30 +761,30 @@ export default function AdminPage() {
             <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 md:grid-cols-[1fr_auto] md:items-center">
               <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                 <div>
-                  <p className="text-neutral-500">Customer</p>
+                  <p className="text-neutral-500">{t.admin.customer}</p>
                   <p className="font-semibold text-white">
                     {customer?.full_name || '-'}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-neutral-500">Items</p>
+                  <p className="text-neutral-500">{t.admin.items}</p>
                   <p className="font-semibold text-white">
-                    {items.length} slot{items.length === 1 ? '' : 's'}
+                    {items.length} {items.length === 1 ? t.admin.slot : t.admin.slots}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-neutral-500">Schedule</p>
+                  <p className="text-neutral-500">{t.admin.schedule}</p>
                   <p className="font-semibold text-white">
                     {scheduleSummary}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-neutral-500">Total</p>
+                  <p className="text-neutral-500">{t.admin.total}</p>
                   <p className="font-semibold text-white">
-                    {booking.total_amount} THB
+                    {booking.total_amount} {t.common.thb}
                   </p>
                 </div>
               </div>
@@ -761,7 +794,7 @@ export default function AdminPage() {
                 onClick={() => toggleBookingDetails(booking.booking_code)}
                 className="h-11 rounded-xl border border-white/10 px-5 font-semibold text-white transition hover:border-emerald-400 hover:text-emerald-300"
               >
-                {isExpanded ? 'Hide details' : 'Details'}
+                {isExpanded ? t.admin.hideDetails : t.admin.details}
               </button>
             </div>
 
@@ -769,14 +802,14 @@ export default function AdminPage() {
               <>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl bg-neutral-950 p-4">
-                <p className="mb-2 font-bold">Customer</p>
-                <p>Name: {customer?.full_name || '-'}</p>
-                <p>Phone: {customer?.phone || '-'}</p>
-                <p>Email: {customer?.email || '-'}</p>
+                <p className="mb-2 font-bold">{t.admin.customerDetails}</p>
+                <p>{t.admin.name}: {customer?.full_name || '-'}</p>
+                <p>{t.admin.phone}: {customer?.phone || '-'}</p>
+                <p>{t.admin.email}: {customer?.email || '-'}</p>
               </div>
 
               <div className="rounded-2xl bg-neutral-950 p-4 md:col-span-2">
-                <p className="mb-2 font-bold">Booking details</p>
+                <p className="mb-2 font-bold">{t.admin.bookingDetails}</p>
 
                 {booking.booking_items?.map((item, index) => (
                   <div
@@ -784,26 +817,26 @@ export default function AdminPage() {
                     className="mb-3 grid gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-sm last:mb-0 sm:grid-cols-[1fr_1fr_1fr_auto]"
                   >
                     <div>
-                      <p className="text-neutral-500">Court</p>
+                      <p className="text-neutral-500">{t.admin.court}</p>
                       <p className="font-semibold text-white">
                         {firstRelation(item.courts)?.name || '-'}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-neutral-500">Date</p>
+                      <p className="text-neutral-500">{t.admin.date}</p>
                       <p className="font-semibold text-white">{item.booking_date}</p>
                     </div>
 
                     <div>
-                      <p className="text-neutral-500">Time</p>
+                      <p className="text-neutral-500">{t.admin.time}</p>
                       <p className="font-semibold text-white">
                         {item.start_time} - {item.end_time}
                       </p>
                     </div>
 
                     <div className="sm:text-right">
-                      <p className="text-neutral-500">{item.price} THB</p>
+                      <p className="text-neutral-500">{item.price} {t.common.thb}</p>
                       <p
                         className={
                           item.status === 'cancelled'
@@ -813,7 +846,7 @@ export default function AdminPage() {
                             : 'font-semibold text-emerald-400'
                         }
                       >
-                        {item.status}
+                        {getStatusLabel(item.status)}
                       </p>
 
                       {item.id &&
@@ -825,14 +858,14 @@ export default function AdminPage() {
                               setPendingAction({
                                 bookingCode: booking.booking_code,
                                 itemId: item.id,
-                                label: 'Complete slot',
+                                label: t.admin.completeSlot,
                                 status: 'completed',
                                 tone: 'blue',
                               })
                             }
                             className="mt-2 h-9 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 text-xs font-bold text-blue-300 transition hover:bg-blue-500 hover:text-white"
                           >
-                            Complete slot
+                            {t.admin.completeSlot}
                           </button>
                         )}
                     </div>
@@ -845,15 +878,15 @@ export default function AdminPage() {
               <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
                 <div className="space-y-3">
                   <p className="text-xl font-bold">
-                    Total: {booking.total_amount} THB
+                    {t.admin.total}: {booking.total_amount} {t.common.thb}
                   </p>
 
                   {booking.slip_url ? (
                     <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 sm:w-fit sm:min-w-[300px]">
                       <div>
-                        <p className="font-bold text-white">Payment Slip</p>
+                        <p className="font-bold text-white">{t.admin.paymentSlip}</p>
                         <p className="mt-1 text-sm text-neutral-500">
-                          Uploaded
+                          {t.admin.uploaded}
                         </p>
                       </div>
 
@@ -862,19 +895,19 @@ export default function AdminPage() {
                         target="_blank"
                         className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-black transition hover:bg-neutral-200 sm:h-11 sm:px-5 sm:text-base"
                       >
-                        View Slip
+                        {t.admin.viewSlip}
                       </a>
                     </div>
                   ) : (
                     <div className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4 text-neutral-400 sm:w-fit sm:min-w-[260px]">
-                      No payment slip uploaded
+                      {t.admin.noSlip}
                     </div>
                   )}
                 </div>
 
               <div className="rounded-2xl border border-white/10 bg-neutral-950 p-3">
                 <p className="mb-3 text-sm font-semibold text-neutral-400 lg:hidden">
-                  Admin actions
+                  {t.admin.adminActions}
                 </p>
 
                 {hasActions ? (
@@ -884,7 +917,7 @@ export default function AdminPage() {
                     onClick={() =>
                       setPendingAction({
                         bookingCode: booking.booking_code,
-                        label: 'Mark as paid',
+                        label: t.admin.markAsPaid,
                         status: 'paid',
                         paymentStatus: 'paid',
                         tone: 'green',
@@ -892,7 +925,7 @@ export default function AdminPage() {
                     }
                     className="col-span-2 h-11 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-black transition hover:bg-emerald-400 sm:col-span-1 sm:min-w-[150px] sm:px-5 sm:text-base"
                 >
-                    Mark as Paid
+                    {t.admin.markAsPaid}
                 </button>
                 )}
 
@@ -901,14 +934,14 @@ export default function AdminPage() {
                   onClick={() =>
                     setPendingAction({
                       bookingCode: booking.booking_code,
-                      label: 'Complete booking',
+                      label: t.admin.completeBooking,
                       status: 'completed',
                       tone: 'blue',
                     })
                   }
                   className="h-11 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white transition hover:bg-blue-400 sm:min-w-[150px] sm:px-5 sm:text-base"
                 >
-                  Complete
+                  {t.admin.complete}
                 </button>
                 )}
 
@@ -917,20 +950,20 @@ export default function AdminPage() {
                   onClick={() =>
                     setPendingAction({
                       bookingCode: booking.booking_code,
-                      label: 'Cancel booking',
+                      label: t.admin.cancelBooking,
                       status: 'cancelled',
                       tone: 'red',
                     })
                   }
                   className="h-11 rounded-xl border border-red-500/50 bg-red-500/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-500 hover:text-white sm:min-w-[150px] sm:px-5 sm:text-base"
                 >
-                  Cancel
+                  {t.admin.cancel}
                 </button>
                 )}
               </div>
                 ) : (
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm font-semibold text-neutral-400">
-                    No actions available for this booking.
+                    {t.admin.noActions}
                   </div>
                 )}
               </div>
@@ -946,7 +979,7 @@ export default function AdminPage() {
 
         {!loading && bookings.length === 0 && (
           <div className="rounded-3xl border border-dashed border-white/10 bg-neutral-900 p-10 text-center text-neutral-400">
-            No bookings found.
+            {t.admin.noBookings}
           </div>
         )}
       </div>
