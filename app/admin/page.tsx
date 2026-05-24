@@ -51,7 +51,7 @@ type PendingAction = {
   label: string
   status: string
   paymentStatus?: string
-  tone: 'green' | 'blue' | 'red'
+  tone: 'green' | 'blue' | 'red' | 'yellow'
 } | null
 
 type ToastTone = 'success' | 'error' | 'info'
@@ -95,6 +95,14 @@ function getScheduleSummary(items: BookingItem[]) {
   return `${dates[0]} - ${dates[dates.length - 1]}`
 }
 
+function makeReceiptNumber(bookingCode: string) {
+  return bookingCode.replace(/^BK-/, 'RC-')
+}
+
+function isPdfUrl(url: string) {
+  return url.split('?')[0].toLowerCase().endsWith('.pdf')
+}
+
 export default function AdminPage() {
   const { locale, t } = useI18n()
   const router = useRouter()
@@ -113,6 +121,8 @@ export default function AdminPage() {
   const [toast, setToast] = useState<ToastState>(null)
   const [expandedBookings, setExpandedBookings] = useState<string[]>([])
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
+  const [receiptPreview, setReceiptPreview] = useState<Booking | null>(null)
+  const [slipPreview, setSlipPreview] = useState<string | null>(null)
 
   const currentFilter = useMemo<BookingFilter>(
     () => ({
@@ -135,6 +145,13 @@ export default function AdminPage() {
     }),
     [initialToday]
   )
+
+  const receiptPreviewCustomer = useMemo(
+    () => firstRelation(receiptPreview?.customers),
+    [receiptPreview]
+  )
+
+  const receiptPreviewItems = receiptPreview?.booking_items || []
 
   const showToast = useCallback((message: string, tone: ToastTone = 'info') => {
     setToast({ message, tone })
@@ -365,7 +382,10 @@ export default function AdminPage() {
     await fetchBookings(currentFilter)
     setUpdatingStatus(false)
     setPendingAction(null)
-    showToast(t.admin.bookingUpdated, 'success')
+    showToast(
+      newPaymentStatus === 'paid' ? t.admin.receiptReady : t.admin.bookingUpdated,
+      'success'
+    )
   }
 
 
@@ -490,11 +510,175 @@ export default function AdminPage() {
                   ? 'bg-emerald-500 text-black hover:bg-emerald-400'
                   : pendingAction.tone === 'blue'
                   ? 'bg-blue-500 text-white hover:bg-blue-400'
+                  : pendingAction.tone === 'yellow'
+                  ? 'bg-yellow-400 text-black hover:bg-yellow-300'
                   : 'bg-red-500 text-white hover:bg-red-400'
               }`}
             >
               {updatingStatus ? t.admin.updating : t.common.confirm}
             </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {receiptPreview && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div className="max-h-[calc(100vh-2rem)] w-full max-w-6xl overflow-y-auto rounded-3xl border border-white/10 bg-neutral-900 p-5 shadow-2xl md:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
+                {t.receipt.eyebrow}
+              </p>
+              <h2 className="mt-3 text-4xl font-bold leading-tight md:text-5xl">
+                {t.receipt.title}
+              </h2>
+              <p className="mt-3 max-w-3xl text-neutral-400">
+                {t.receipt.note}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2 print:hidden">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex h-11 items-center justify-center rounded-2xl bg-white px-5 text-sm font-bold text-black transition hover:bg-neutral-200"
+              >
+                {t.common.print}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setReceiptPreview(null)}
+                aria-label="Close receipt preview"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 text-2xl font-bold text-white transition hover:border-white/30 hover:bg-white hover:text-black"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-white/10 pt-6">
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr]">
+              <div className="rounded-2xl border border-white/10 bg-black p-5">
+                <p className="text-sm text-neutral-500">{t.receipt.receiptNumber}</p>
+                <p className="mt-2 text-xl font-bold">
+                  {makeReceiptNumber(receiptPreview.booking_code)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black p-5">
+                <p className="text-sm text-neutral-500">{t.receipt.customer}</p>
+                <p className="mt-2 text-xl font-bold">
+                  {receiptPreviewCustomer?.full_name || '-'}
+                </p>
+                <p className="mt-1 text-neutral-400">
+                  {receiptPreviewCustomer?.phone || '-'}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black p-5">
+                <p className="text-sm text-neutral-500">{t.receipt.issuedAt}</p>
+                <p className="mt-2 text-xl font-bold">
+                  {new Date(receiptPreview.created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div className="rounded-2xl border border-white/10 bg-black p-5">
+                <p className="text-sm text-neutral-500">{t.receipt.bookingCode}</p>
+                <p className="mt-2 text-xl font-bold">
+                  {receiptPreview.booking_code}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 lg:min-w-[240px]">
+                <p className="text-sm text-emerald-300/80">{t.receipt.totalPaid}</p>
+                <p className="mt-2 text-3xl font-bold text-white">
+                  {receiptPreview.total_amount} {t.common.thb}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <h3 className="text-2xl font-bold">{t.receipt.bookingItems}</h3>
+
+              <div className="mt-4 space-y-3">
+                {receiptPreviewItems.map((item) => {
+                  const court = firstRelation(item.courts)
+
+                  return (
+                    <div
+                      key={item.id || `${item.booking_date}-${item.start_time}`}
+                      className="grid gap-3 rounded-2xl border border-white/10 bg-black p-4 text-sm md:grid-cols-[1fr_1fr_1fr_auto] md:items-center"
+                    >
+                      <div>
+                        <p className="text-neutral-500">{t.admin.court}</p>
+                        <p className="font-bold">{court?.name || '-'}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-neutral-500">{t.admin.date}</p>
+                        <p className="font-bold">{item.booking_date}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-neutral-500">{t.admin.time}</p>
+                        <p className="font-bold">
+                          {item.start_time} - {item.end_time}
+                        </p>
+                      </div>
+
+                      <div className="font-bold md:text-right">
+                        {item.price} {t.common.thb}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {slipPreview && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-5xl rounded-3xl border border-white/10 bg-neutral-900 p-4 shadow-2xl md:p-6">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-400">
+                {t.admin.paymentSlip}
+              </p>
+              <h2 className="mt-2 text-2xl font-bold">{t.admin.viewSlip}</h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSlipPreview(null)}
+              aria-label="Close slip preview"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 text-2xl font-bold text-white transition hover:border-white/30 hover:bg-white hover:text-black"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
+            {isPdfUrl(slipPreview) ? (
+              <iframe
+                src={slipPreview}
+                title={t.admin.viewSlip}
+                className="h-[78vh] w-full"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={slipPreview}
+                alt={t.admin.viewSlip}
+                className="max-h-[78vh] w-full object-contain"
+              />
+            )}
           </div>
         </div>
       </div>
@@ -570,7 +754,7 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="mb-8 rounded-3xl border border-white/10 bg-neutral-900 p-5">
+      <section className="mb-6 rounded-3xl border border-white/10 bg-neutral-900 p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-bold">{t.admin.filters}</h2>
@@ -703,6 +887,8 @@ export default function AdminPage() {
         </div>
       </section>
 
+      <div className="mb-8 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+
       {loading && (
         <div className="mb-6 rounded-2xl border border-white/10 bg-neutral-900 p-4 text-neutral-300">
           {t.admin.loadingBookings}
@@ -720,14 +906,9 @@ export default function AdminPage() {
               const items = booking.booking_items || []
               const scheduleSummary = getScheduleSummary(items)
               const isExpanded = expandedBookings.includes(booking.booking_code)
-              const canMarkPaid =
-                booking.payment_status !== 'paid' &&
-                booking.status !== 'cancelled'
-              const canComplete =
-                booking.status !== 'completed' &&
-                booking.status !== 'cancelled'
-              const canCancel = booking.status !== 'cancelled'
-              const hasActions = canMarkPaid || canComplete || canCancel
+              const isPaymentPaid = booking.payment_status === 'paid'
+              const isBookingCompleted = booking.status === 'completed'
+              const isBookingCancelled = booking.status === 'cancelled'
 
               return (
                 <>
@@ -800,7 +981,7 @@ export default function AdminPage() {
 
             {isExpanded && (
               <>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="mt-4 grid gap-4 lg:grid-cols-[260px_1fr] xl:grid-cols-[300px_1fr]">
               <div className="rounded-2xl bg-neutral-950 p-4">
                 <p className="mb-2 font-bold">{t.admin.customerDetails}</p>
                 <p>{t.admin.name}: {customer?.full_name || '-'}</p>
@@ -808,13 +989,13 @@ export default function AdminPage() {
                 <p>{t.admin.email}: {customer?.email || '-'}</p>
               </div>
 
-              <div className="rounded-2xl bg-neutral-950 p-4 md:col-span-2">
+              <div className="rounded-2xl bg-neutral-950 p-4">
                 <p className="mb-2 font-bold">{t.admin.bookingDetails}</p>
 
                 {booking.booking_items?.map((item, index) => (
                   <div
                     key={index}
-                    className="mb-3 grid gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-sm last:mb-0 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                    className="mb-3 grid gap-3 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm last:mb-0 sm:grid-cols-2 lg:grid-cols-[0.9fr_0.9fr_minmax(150px,1.15fr)_0.65fr_0.75fr_132px] lg:items-center lg:p-3"
                   >
                     <div>
                       <p className="text-neutral-500">{t.admin.court}</p>
@@ -835,8 +1016,15 @@ export default function AdminPage() {
                       </p>
                     </div>
 
-                    <div className="sm:text-right">
-                      <p className="text-neutral-500">{item.price} {t.common.thb}</p>
+                    <div>
+                      <p className="text-neutral-500">{t.admin.price}</p>
+                      <p className="font-semibold text-white">
+                        {item.price} {t.common.thb}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-neutral-500">{t.admin.status}</p>
                       <p
                         className={
                           item.status === 'cancelled'
@@ -848,26 +1036,44 @@ export default function AdminPage() {
                       >
                         {getStatusLabel(item.status)}
                       </p>
+                    </div>
 
-                      {item.id &&
-                        item.status !== 'completed' &&
-                        item.status !== 'cancelled' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPendingAction({
-                                bookingCode: booking.booking_code,
-                                itemId: item.id,
-                                label: t.admin.completeSlot,
-                                status: 'completed',
-                                tone: 'blue',
-                              })
-                            }
-                            className="mt-2 h-9 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 text-xs font-bold text-blue-300 transition hover:bg-blue-500 hover:text-white"
-                          >
-                            {t.admin.completeSlot}
-                          </button>
-                        )}
+                    <div className="sm:col-span-2 flex flex-col gap-2 lg:col-span-1 lg:items-end">
+                      {item.id && (
+                        <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPendingAction({
+                              bookingCode: booking.booking_code,
+                              itemId: item.id,
+                              label: t.admin.completeSlot,
+                              status: 'completed',
+                              tone: 'blue',
+                            })
+                          }
+                          className="h-9 w-full rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 text-xs font-bold text-blue-300 transition hover:bg-blue-500 hover:text-white lg:w-[132px]"
+                        >
+                          {t.admin.completeSlot}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPendingAction({
+                              bookingCode: booking.booking_code,
+                              itemId: item.id,
+                              label: t.admin.cancelSlot,
+                              status: 'cancelled',
+                              tone: 'red',
+                            })
+                          }
+                          className="h-9 w-full rounded-lg border border-red-500/50 bg-red-500/10 px-3 text-xs font-bold text-red-300 transition hover:bg-red-500 hover:text-white lg:w-[132px]"
+                        >
+                          {t.admin.cancelSlot}
+                        </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -875,29 +1081,58 @@ export default function AdminPage() {
             </div>
 
             <div className="mt-4 border-t border-white/10 pt-5">
-              <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-                <div className="space-y-3">
+              <div>
                   <p className="text-xl font-bold">
                     {t.admin.total}: {booking.total_amount} {t.common.thb}
                   </p>
+              </div>
 
-                  {booking.slip_url ? (
-                    <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4 sm:w-fit sm:min-w-[300px]">
-                      <div>
-                        <p className="font-bold text-white">{t.admin.paymentSlip}</p>
-                        <p className="mt-1 text-sm text-neutral-500">
-                          {t.admin.uploaded}
-                        </p>
+              <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,720px)_auto] xl:items-stretch xl:justify-between">
+                <div>
+                  {booking.slip_url || booking.payment_status === 'paid' ? (
+                    <div className="grid h-full gap-3 sm:grid-cols-2">
+                      {booking.slip_url ? (
+                        <div className="flex min-h-[96px] w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4">
+                          <div>
+                            <p className="font-bold text-white">{t.admin.paymentSlip}</p>
+                            <p className="mt-1 text-sm text-neutral-500">
+                              {t.admin.uploaded}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setSlipPreview(booking.slip_url)}
+                            className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-black transition hover:bg-neutral-200 sm:h-11 sm:px-5 sm:text-base"
+                          >
+                            {t.admin.viewSlip}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4 text-neutral-400 sm:min-w-[260px]">
+                          {t.admin.noSlip}
+                        </div>
+                      )}
+
+                      {booking.payment_status === 'paid' && (
+                        <div className="flex min-h-[96px] w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-neutral-950 p-4">
+                          <div>
+                            <p className="font-bold text-white">{t.admin.viewReceipt}</p>
+                            <p className="mt-1 text-sm text-neutral-500">
+                              {t.admin.receiptReady}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setReceiptPreview(booking)}
+                            className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-black transition hover:bg-neutral-200 sm:h-11 sm:px-5 sm:text-base"
+                          >
+                            {t.admin.viewReceipt}
+                          </button>
+                        </div>
+                      )}
                       </div>
-
-                      <a
-                        href={booking.slip_url}
-                        target="_blank"
-                        className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-bold text-black transition hover:bg-neutral-200 sm:h-11 sm:px-5 sm:text-base"
-                      >
-                        {t.admin.viewSlip}
-                      </a>
-                    </div>
                   ) : (
                     <div className="w-full rounded-2xl border border-white/10 bg-neutral-950 p-4 text-neutral-400 sm:w-fit sm:min-w-[260px]">
                       {t.admin.noSlip}
@@ -905,67 +1140,61 @@ export default function AdminPage() {
                   )}
                 </div>
 
-              <div className="rounded-2xl border border-white/10 bg-neutral-950 p-3">
-                <p className="mb-3 text-sm font-semibold text-neutral-400 lg:hidden">
+              <div className="rounded-2xl border border-white/10 bg-neutral-950 p-4 xl:w-[560px]">
+                <p className="mb-3 text-sm font-semibold text-neutral-400">
                   {t.admin.adminActions}
                 </p>
 
-                {hasActions ? (
-                <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:justify-end">
-                {canMarkPaid && (
+                <div className="grid gap-3 md:grid-cols-3">
                 <button
                     onClick={() =>
                       setPendingAction({
                         bookingCode: booking.booking_code,
-                        label: t.admin.markAsPaid,
-                        status: 'paid',
-                        paymentStatus: 'paid',
-                        tone: 'green',
+                        label: isPaymentPaid
+                          ? t.admin.markAsUnpaid
+                          : t.admin.markAsPaid,
+                        status: isPaymentPaid ? 'pending' : 'paid',
+                        paymentStatus: isPaymentPaid ? 'unpaid' : 'paid',
+                        tone: isPaymentPaid ? 'yellow' : 'green',
                       })
                     }
-                    className="col-span-2 h-11 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-black transition hover:bg-emerald-400 sm:col-span-1 sm:min-w-[150px] sm:px-5 sm:text-base"
+                    className={`h-11 whitespace-nowrap rounded-xl px-4 text-sm font-semibold text-black transition sm:px-5 ${
+                      isPaymentPaid
+                        ? 'bg-yellow-400 hover:bg-yellow-300'
+                        : 'bg-emerald-500 hover:bg-emerald-400'
+                    }`}
                 >
-                    {t.admin.markAsPaid}
+                    {isPaymentPaid ? t.admin.markAsUnpaid : t.admin.markAsPaid}
                 </button>
-                )}
 
-                {canComplete && (
                 <button
                   onClick={() =>
                     setPendingAction({
                       bookingCode: booking.booking_code,
                       label: t.admin.completeBooking,
-                      status: 'completed',
+                      status: isBookingCompleted ? 'pending' : 'completed',
                       tone: 'blue',
                     })
                   }
-                  className="h-11 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white transition hover:bg-blue-400 sm:min-w-[150px] sm:px-5 sm:text-base"
+                  className="h-11 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white transition hover:bg-blue-400 sm:px-5"
                 >
                   {t.admin.complete}
                 </button>
-                )}
 
-                {canCancel && (
                 <button
                   onClick={() =>
                     setPendingAction({
                       bookingCode: booking.booking_code,
                       label: t.admin.cancelBooking,
-                      status: 'cancelled',
+                      status: isBookingCancelled ? 'pending' : 'cancelled',
                       tone: 'red',
                     })
                   }
-                  className="h-11 rounded-xl border border-red-500/50 bg-red-500/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-500 hover:text-white sm:min-w-[150px] sm:px-5 sm:text-base"
+                  className="h-11 rounded-xl border border-red-500/50 bg-red-500/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-500 hover:text-white sm:px-5"
                 >
                   {t.admin.cancel}
                 </button>
-                )}
               </div>
-                ) : (
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm font-semibold text-neutral-400">
-                    {t.admin.noActions}
-                  </div>
-                )}
               </div>
               </div>
             </div>

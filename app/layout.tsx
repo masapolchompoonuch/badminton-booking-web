@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import type { Locale } from "@/lib/i18n";
 import "./globals.css";
 import { LanguageProvider } from "./language-provider";
 
@@ -7,19 +9,26 @@ export const metadata: Metadata = {
   description: "Online badminton court booking system",
 };
 
-export default function RootLayout({
+function getInitialLocale(value: string | undefined): Locale {
+  return value === "th" || value === "en" ? value : "en";
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const initialLocale = getInitialLocale(cookieStore.get("locale")?.value);
+
   return (
     <html
-      lang="en"
+      lang={initialLocale}
       className="h-full antialiased"
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider initialLocale={initialLocale}>{children}</LanguageProvider>
       </body>
     </html>
   );

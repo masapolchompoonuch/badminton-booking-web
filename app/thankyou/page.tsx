@@ -1,18 +1,22 @@
 'use client'
 
-import { LanguageToggle } from '../language-toggle'
+import { useState } from 'react'
 import { useI18n } from '../language-provider'
+
+function getBookingCodeFromUrl() {
+  if (typeof window === 'undefined') return ''
+
+  return new URLSearchParams(window.location.search).get('code') || ''
+}
 
 export default function ThankYouPage() {
   const { t } = useI18n()
+  const [bookingCode] = useState(() => getBookingCodeFromUrl())
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-      <div className="w-full max-w-lg rounded-3xl border border-emerald-500/30 bg-neutral-900 p-8 text-center">
-        <div className="mb-6 flex justify-end">
-          <LanguageToggle />
-        </div>
-        
+    <main className="min-h-screen bg-neutral-950 text-white">
+      <section className="mx-auto flex min-h-screen w-full max-w-6xl items-center px-5 py-10 md:py-16">
+        <div className="mx-auto w-full max-w-lg rounded-3xl border border-emerald-500/30 bg-neutral-900 p-8 text-center">
         <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 text-4xl font-bold text-black">
           ✓
         </div>
@@ -27,6 +31,18 @@ export default function ThankYouPage() {
           {t.thankyou.textLine2}
         </p>
 
+        <div className="rounded-2xl border border-white/10 bg-black p-4 text-left">
+          <p className="text-sm text-neutral-400">
+            {t.thankyou.receiptNote}
+          </p>
+
+          {bookingCode && (
+            <p className="mt-2 truncate font-bold text-white">
+              {bookingCode}
+            </p>
+          )}
+        </div>
+
         <button
           onClick={() => {
             window.location.href = '/'
@@ -35,7 +51,8 @@ export default function ThankYouPage() {
         >
           {t.thankyou.backHome}
         </button>
-      </div>
+        </div>
+      </section>
     </main>
   )
 }

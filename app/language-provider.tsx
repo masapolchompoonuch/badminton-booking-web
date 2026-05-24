@@ -24,26 +24,78 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(defaultLocale)
+function getCookieLocale() {
+  if (typeof document === 'undefined') return null
+
+  const cookieLocale = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith('locale='))
+    ?.split('=')[1]
+
+  return cookieLocale === 'en' || cookieLocale === 'th'
+    ? cookieLocale
+    : null
+}
+
+function saveLocale(nextLocale: Locale) {
+  window.localStorage.setItem('locale', nextLocale)
+  document.cookie = `locale=${nextLocale}; path=/; max-age=31536000; samesite=lax`
+}
+
+export function LanguageProvider({
+  children,
+  initialLocale = defaultLocale,
+}: {
+  children: ReactNode
+  initialLocale?: Locale
+}) {
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    if (typeof window === 'undefined') return initialLocale
+
+    const savedLocale = window.localStorage.getItem('locale')
+
+    if (savedLocale === 'en' || savedLocale === 'th') {
+      return savedLocale
+    }
+
+    return getCookieLocale() || initialLocale
+  })
 
   useEffect(() => {
-    window.queueMicrotask(() => {
+    document.documentElement.lang = locale
+    saveLocale(locale)
+  }, [locale])
+
+  useEffect(() => {
+    function syncSavedLocale() {
       const savedLocale = window.localStorage.getItem('locale')
 
       if (savedLocale === 'en' || savedLocale === 'th') {
         setLocaleState(savedLocale)
+        return
       }
-    })
-  }, [])
 
-  useEffect(() => {
-    document.documentElement.lang = locale
-  }, [locale])
+      const cookieLocale = getCookieLocale()
+
+      if (cookieLocale) {
+        setLocaleState(cookieLocale)
+      }
+    }
+
+    window.addEventListener('pageshow', syncSavedLocale)
+    window.addEventListener('focus', syncSavedLocale)
+    window.addEventListener('storage', syncSavedLocale)
+
+    return () => {
+      window.removeEventListener('pageshow', syncSavedLocale)
+      window.removeEventListener('focus', syncSavedLocale)
+      window.removeEventListener('storage', syncSavedLocale)
+    }
+  }, [])
 
   const setLocale = useCallback((nextLocale: Locale) => {
     setLocaleState(nextLocale)
-    window.localStorage.setItem('locale', nextLocale)
+    saveLocale(nextLocale)
   }, [])
 
   const value = useMemo(
